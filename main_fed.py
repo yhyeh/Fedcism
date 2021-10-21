@@ -50,11 +50,11 @@ if __name__ == '__main__':
     for iter in range(args.epochs):
         w_glob = None
         loss_locals = []
-        m = max(int(args.frac * args.num_users), 1)
+        m = max(int(args.frac * args.num_users), 1) # num of selected clients
         idxs_users = np.random.choice(range(args.num_users), m, replace=False)
         print("Round {}, lr: {:.6f}, {}".format(iter, lr, idxs_users))
 
-        for idx in idxs_users:
+        for idx in idxs_users: # iter over selected clients
             local = LocalUpdate(args=args, dataset=dataset_train, idxs=dict_users_train[idx])
             net_local = copy.deepcopy(net_glob)
 

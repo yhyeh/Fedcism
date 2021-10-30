@@ -15,6 +15,7 @@ from models.test import test_img
 import os
 
 import pdb
+import time
 
 if __name__ == '__main__':
     # parse args
@@ -27,6 +28,9 @@ if __name__ == '__main__':
         os.makedirs(os.path.join(base_dir, 'fed'), exist_ok=True)
 
     dataset_train, dataset_test, dict_users_train, dict_users_test = get_data(args)
+    print('type: ', type(dataset_test))
+    print('len: ', len(dataset_test))
+
     dict_save_path = os.path.join(base_dir, 'dict_users.pkl')
     with open(dict_save_path, 'wb') as handle:
         pickle.dump((dict_users_train, dict_users_test), handle)
@@ -39,6 +43,7 @@ if __name__ == '__main__':
     results_save_path = os.path.join(base_dir, 'fed/results.csv')
 
     loss_train = []
+    time_train = []
     net_best = None
     best_loss = None
     best_acc = None
@@ -48,6 +53,9 @@ if __name__ == '__main__':
     results = []
 
     for iter in range(args.epochs):
+        t_geps_bgin = time.time()
+        time_locals = []
+        
         w_glob = None
         loss_locals = []
         m = max(int(args.frac * args.num_users), 1) # num of selected clients
@@ -55,6 +63,8 @@ if __name__ == '__main__':
         print("Round {}, lr: {:.6f}, {}".format(iter, lr, idxs_users))
 
         for idx in idxs_users: # iter over selected clients
+            t_leps_bgin = time.time()
+
             local = LocalUpdate(args=args, dataset=dataset_train, idxs=dict_users_train[idx])
             net_local = copy.deepcopy(net_glob)
 
@@ -66,6 +76,9 @@ if __name__ == '__main__':
             else:
                 for k in w_glob.keys():
                     w_glob[k] += w_local[k]
+            
+            t_leps_end = time.time()
+            time_locals.append(t_leps_end - t_leps_bgin)
 
         lr *= args.lr_decay
 
@@ -78,13 +91,18 @@ if __name__ == '__main__':
 
         # print loss
         loss_avg = sum(loss_locals) / len(loss_locals)
-        loss_train.append(loss_avg)
+        #loss_train.append(loss_avg)
+
+        t_geps_end = time.time() # not include validation time
+        time_glob = t_geps_end - t_geps_bgin
+        time_train.append(time_glob)
+        time_local_avg = sum(time_locals) / len(time_locals)
 
         if (iter + 1) % args.test_freq == 0:
             net_glob.eval()
             acc_test, loss_test = test_img(net_glob, dataset_test, args)
-            print('Round {:3d}, Average loss {:.3f}, Test loss {:.3f}, Test accuracy: {:.2f}'.format(
-                iter, loss_avg, loss_test, acc_test))
+            print('Round {:3d}, Average loss {:.3f}, Test loss {:.3f}, Test accuracy: {:.2f}, Avg local runtime: {:.2f}, global runtime: {:.2f}'.format(
+                iter, loss_avg, loss_test, acc_test, time_local_avg, time_glob))
 
 
             if best_acc is None or acc_test > best_acc:
@@ -96,9 +114,9 @@ if __name__ == '__main__':
             #     model_save_path = os.path.join(base_dir, 'fed/model_{}.pt'.format(iter + 1))
             #     torch.save(net_glob.state_dict(), model_save_path)
 
-            results.append(np.array([iter, loss_avg, loss_test, acc_test, best_acc]))
+            results.append(np.array([iter, loss_avg, loss_test, acc_test, best_acc, time_local_avg, time_glob]))
             final_results = np.array(results)
-            final_results = pd.DataFrame(final_results, columns=['epoch', 'loss_avg', 'loss_test', 'acc_test', 'best_acc'])
+            final_results = pd.DataFrame(final_results, columns=['epoch', 'loss_avg', 'loss_test', 'acc_test', 'best_acc', 'time_local_avg', 'time_glob'])
             final_results.to_csv(results_save_path, index=False)
 
         if (iter + 1) % 50 == 0:

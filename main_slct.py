@@ -16,6 +16,7 @@ import os
 
 import pdb
 import time
+import json
 
 if __name__ == '__main__':
     # reproduce randomness
@@ -30,8 +31,8 @@ if __name__ == '__main__':
         os.makedirs(os.path.join(base_dir, 'statsel'), exist_ok=True)
 
     dataset_train, dataset_test, dict_users_train, dict_users_test = get_data(args)
-    print('type: ', type(dataset_test))
-    print('len: ', len(dataset_test))
+    #print('type: ', type(dataset_test))
+    #print('len: ', len(dataset_test))
     
 
     shard_path = './save/{}/{}_iid{}_num{}_C{}_le{}/shard{}/'.format(
@@ -46,10 +47,12 @@ if __name__ == '__main__':
         with open(dict_save_path, 'wb') as handle:
             pickle.dump((dict_users_train, dict_users_test), handle)
         
+    '''
     local_data_size = []
     for idx in range(args.num_users):
         local_data_size.append(len(dict_users_train[idx]))
     print('local dataset size: ', local_data_size)
+    '''
 
     # build model
     net_glob = get_model(args)
@@ -58,6 +61,9 @@ if __name__ == '__main__':
     # training
     results_save_path = os.path.join(base_dir, 'statsel/results.csv')
     slctcnt_save_path = os.path.join(base_dir, 'statsel/selection_cnt.csv')
+    utility_save_path = os.path.join(base_dir, 'statsel/utility.csv')
+    if os.path.exists(utility_save_path): # delete
+        os.remove(utility_save_path)
 
     loss_train = []
     time_train = []
@@ -89,6 +95,8 @@ if __name__ == '__main__':
             '''
             sorted_u = {k: v for k, v in sorted(utility.items(), key=lambda item: item[1], reverse=True)}
             print('utility', sorted_u)
+            with open(utility_save_path, 'a') as fp:
+                    fp.write("{}\n".format(json.dumps(sorted_u)))
             kept = []
             n_exploi = round(m*epsilon)
             n_explor = m - round(m*epsilon)
@@ -122,7 +130,7 @@ if __name__ == '__main__':
             # loss: a float, avg loss over local epochs over batches
             #print('loss: ', loss)
             B_i = len(dict_users_train[idx])
-            utility[idx] = np.sqrt(B_i*loss**2)
+            utility[int(idx)] = np.sqrt(B_i*loss**2)
             slct_cnt[idx] += 1
 
             if w_glob is None:
@@ -173,7 +181,7 @@ if __name__ == '__main__':
             final_results = pd.DataFrame(final_results, columns=['epoch', 'loss_avg', 'loss_test', 'acc_test', 'best_acc', 'time_local_avg', 'time_glob'])
             final_results.to_csv(results_save_path, index=False)
             np.savetxt(slctcnt_save_path, slct_cnt, delimiter=",")
-
+            
         if (iter + 1) % 50 == 0:
             best_save_path = os.path.join(base_dir, 'statsel/best_{}.pt'.format(iter + 1))
             model_save_path = os.path.join(base_dir, 'statsel/model_{}.pt'.format(iter + 1))

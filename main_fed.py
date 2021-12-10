@@ -16,6 +16,46 @@ import os
 
 import pdb
 import time
+import threading
+import multiprocessing as mp
+n_core = mp.cpu_count() # 40
+n_gpu = torch.cuda.device_count() # 4
+
+# global var for reading only in child
+w_glob = None
+net_glob = None
+dataset_train = None
+dict_users_train = None
+args = None
+
+# use 10 thread: assume one thread serve a clients, a GPU is shared by multiple clients
+# use 4 thread: assume one thread use one GPU, serve a clients
+def child(cid, idx):
+    t_leps_bgin = time.time()
+    #global w_glob, net_glob
+
+    result = {'cid': cid}
+    args.gpu = cid % n_gpu
+    args.device = torch.device('cuda:{}'.format(args.gpu) if torch.cuda.is_available() and args.gpu != -1 else 'cpu')
+
+    local = LocalUpdate(args=args, dataset=dataset_train, idxs=dict_users_train[idx])
+    net_local = copy.deepcopy(net_glob)
+
+    w_local, loss = local.train(net=net_local.to(args.device), lr=args.lr)
+    # loss_locals.append(copy.deepcopy(loss))
+    result['loss'] = loss
+    # loss: a float, avg loss over local epochs over batches
+
+    
+    
+    result['w_local'] = w_local
+    #result['net_glob'] = net_glob
+
+    t_leps_end = time.time()
+    result['elapse_time'] = t_leps_end - t_leps_bgin
+    
+    print('child ', cid, 'finished, elapse time ', result['elapse_time'])
+    return result
 
 
 if __name__ == '__main__':
@@ -31,6 +71,7 @@ if __name__ == '__main__':
     if not os.path.exists(os.path.join(base_dir, 'fed')):
         os.makedirs(os.path.join(base_dir, 'fed'), exist_ok=True)
 
+    #global dataset_train, dict_users_train
     dataset_train, dataset_test, dict_users_train, dict_users_test = get_data(args)
     '''
     print('type: ', type(dataset_test))
@@ -42,7 +83,7 @@ if __name__ == '__main__':
     '''
     shard_path = './save/{}/{}_iid{}_num{}_C{}_le{}/shard{}/'.format(
         args.dataset, args.model, args.iid, args.num_users, args.frac, args.local_ep, args.shard_per_user)
-    dict_save_path = os.path.join(shard_path, 'unbalanced_dict_users.pkl')
+    dict_save_path = os.path.join(shard_path, 'shared_dict_users.pkl')
     if os.path.exists(dict_save_path): # use old one
         print('Local data already exist!')
         with open(dict_save_path, 'rb') as handle:
@@ -70,6 +111,9 @@ if __name__ == '__main__':
     lr = args.lr
     results = []
 
+    
+
+    # global training
     for iter in range(args.epochs):
         t_geps_bgin = time.time()
         time_locals = []
@@ -88,7 +132,30 @@ if __name__ == '__main__':
             #print(dict_users_train[idx])
         '''
         
-        for idx in idxs_users: # iter over selected clients
+        #threads=[]
+        # init mp pool
+        if m < n_core:
+            n_pool = m
+        else:
+            #n_pool = n_core
+            input('warning: num participants exceed n_core, press enter to continue...')
+        
+        pool = mp.Pool(n_pool)
+        child_arg = zip(range(n_pool), idxs_users)
+        pool_ret = pool.starmap(child, child_arg)
+
+        pool.close()
+        pool.join()
+        for cid, idx in enumerate(idxs_users): # iter over selected clients
+            #threads.append(threading.Thread(target = child, args = (cid, idx)))
+            #threads[id].start()
+            
+            if w_glob is None:
+                w_glob = copy.deepcopy(pool_ret[cid]['w_local'])
+            else:
+                for k in w_glob.keys():
+                    w_glob[k] += pool_ret[cid]['w_local'][k]
+            '''
             t_leps_bgin = time.time()
 
             local = LocalUpdate(args=args, dataset=dataset_train, idxs=dict_users_train[idx])
@@ -108,6 +175,10 @@ if __name__ == '__main__':
             
             t_leps_end = time.time()
             time_locals.append(t_leps_end - t_leps_bgin)
+            '''
+
+        for i in range(args.num_users):
+            threads[i].join()
 
         lr *= args.lr_decay # default: no decay
 

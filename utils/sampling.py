@@ -8,6 +8,7 @@ from itertools import permutations
 import numpy as np
 import torch
 import pdb
+from scipy.stats import norm
 
 def fair_iid(dataset, num_users):
     """
@@ -81,6 +82,37 @@ def iid(dataset, num_users):
         all_idxs = list(set(all_idxs) - dict_users[i])
     return dict_users
 
+def noniid_unbalanced(dataset, num_users, shard_per_user, rand_set_all=[]):
+    """
+    On top of noniid with customized rand_set_all / unbalanced_rand_set
+    :param dataset:
+    :param num_users:
+    :return:
+    """
+
+    num_classes = len(np.unique(dataset.targets))
+    shard_per_class = int(shard_per_user * num_users / num_classes)
+
+    all_shards = list(range(num_classes)) * shard_per_class
+    np.random.shuffle(all_shards)
+    
+    # each user get unbalanced num of shards, the num followed normal distribution
+    pdf = norm.pdf(range(num_users) , loc = int(num_users/2) , scale = int(num_users/3))
+    pdf = pdf / pdf.sum()
+    # guarantee there are at least 1 shard per user
+    shard_owner = np.random.choice(range(num_users), size=len(all_shards)-num_users, p = pdf)
+    shard_owner = np.concatenate((shard_owner, range(num_users)), axis=None)
+
+    assert(len(all_shards) == len(shard_owner))
+    #rand_set_all = np.array(rand_set_all).reshape((num_users, -1))
+    
+    unbalanced_rand_set = []
+    for i in range(num_users): unbalanced_rand_set.append([])
+    for shard, owner in zip(all_shards, shard_owner):
+        unbalanced_rand_set[owner].append(shard)
+
+    return noniid(dataset, num_users, shard_per_user, unbalanced_rand_set)
+
 def noniid(dataset, num_users, shard_per_user, rand_set_all=[]):
     """
     Sample non-I.I.D client data from MNIST dataset
@@ -88,8 +120,10 @@ def noniid(dataset, num_users, shard_per_user, rand_set_all=[]):
     :param num_users:
     :return:
     """
+    # userID : [local datapointIDs]
     dict_users = {i: np.array([], dtype='int64') for i in range(num_users)}
 
+    # label : [datapointIDs]
     idxs_dict = {}
     for i in range(len(dataset)):
         label = torch.tensor(dataset.targets[i]).item()
@@ -97,6 +131,7 @@ def noniid(dataset, num_users, shard_per_user, rand_set_all=[]):
             idxs_dict[label] = []
         idxs_dict[label].append(i)
 
+    # reshape (group) data as (num_shard, data per shard) for each class
     num_classes = len(np.unique(dataset.targets))
     shard_per_class = int(shard_per_user * num_users / num_classes)
     for label in idxs_dict.keys():
@@ -111,6 +146,7 @@ def noniid(dataset, num_users, shard_per_user, rand_set_all=[]):
             x[i] = np.concatenate([x[i], [idx]])
         idxs_dict[label] = x
 
+    # rand_set_all: user -> [shard for class1, shard for class3, ...]
     if len(rand_set_all) == 0:
         rand_set_all = list(range(num_classes)) * shard_per_class
         random.shuffle(rand_set_all)
@@ -125,6 +161,8 @@ def noniid(dataset, num_users, shard_per_user, rand_set_all=[]):
             rand_set.append(idxs_dict[label].pop(idx))
         dict_users[i] = np.concatenate(rand_set)
 
+    # test to guarantee user get data with noniidness
+    '''
     test = []
     for key, value in dict_users.items():
         x = np.unique(torch.tensor(dataset.targets)[value])
@@ -133,7 +171,8 @@ def noniid(dataset, num_users, shard_per_user, rand_set_all=[]):
     test = np.concatenate(test)
     assert(len(test) == len(dataset))
     assert(len(set(list(test))) == len(dataset))
-
+    '''
+    
     return dict_users, rand_set_all
 
 def noniid_replace(dataset, num_users, shard_per_user, rand_set_all=[]):

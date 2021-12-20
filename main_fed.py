@@ -42,7 +42,7 @@ if __name__ == '__main__':
     '''
     shard_path = './save/{}/{}_iid{}_num{}_C{}_le{}/shard{}/'.format(
         args.dataset, args.model, args.iid, args.num_users, args.frac, args.local_ep, args.shard_per_user)
-    dict_save_path = os.path.join(shard_path, 'shared_dict_users.pkl')
+    dict_save_path = os.path.join(shard_path, 'unbalanced_dict_users.pkl')
     if os.path.exists(dict_save_path): # use old one
         print('Local data already exist!')
         with open(dict_save_path, 'rb') as handle:

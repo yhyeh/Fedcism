@@ -21,6 +21,8 @@ import json
 if __name__ == '__main__':
     # reproduce randomness
     torch.manual_seed(1001)
+    np.random.seed(1001)
+
     # parse args
     args = args_parser()
     args.device = torch.device('cuda:{}'.format(args.gpu) if torch.cuda.is_available() and args.gpu != -1 else 'cpu')
@@ -31,13 +33,14 @@ if __name__ == '__main__':
         os.makedirs(os.path.join(base_dir, 'statsel'), exist_ok=True)
 
     dataset_train, dataset_test, dict_users_train, dict_users_test = get_data(args)
+    # dict_users_test is unused actually
     #print('type: ', type(dataset_test))
     #print('len: ', len(dataset_test))
     
 
     shard_path = './save/{}/{}_iid{}_num{}_C{}_le{}/shard{}/'.format(
         args.dataset, args.model, args.iid, args.num_users, args.frac, args.local_ep, args.shard_per_user)
-    dict_save_path = os.path.join(shard_path, 'shared_dict_users.pkl')
+    dict_save_path = os.path.join(shard_path, 'unbalanced_dict_users.pkl')
     if os.path.exists(dict_save_path): # use old one
         print('Local data already exist!')
         with open(dict_save_path, 'rb') as handle:
@@ -181,12 +184,12 @@ if __name__ == '__main__':
             final_results = pd.DataFrame(final_results, columns=['epoch', 'loss_avg', 'loss_test', 'acc_test', 'best_acc', 'time_local_avg', 'time_glob'])
             final_results.to_csv(results_save_path, index=False)
             np.savetxt(slctcnt_save_path, slct_cnt, delimiter=",")
-            
+        ''' 
         if (iter + 1) % 50 == 0:
             best_save_path = os.path.join(base_dir, 'statsel/best_{}.pt'.format(iter + 1))
             model_save_path = os.path.join(base_dir, 'statsel/model_{}.pt'.format(iter + 1))
             torch.save(net_best.state_dict(), best_save_path)
             torch.save(net_glob.state_dict(), model_save_path)
-
+        '''
     print('Best model, iter: {}, acc: {}'.format(best_epoch, best_acc))
     

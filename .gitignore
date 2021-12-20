@@ -1,4 +1,16 @@
 .idea/
+# test file
+mp_test.py
+
+# script
+*.sh
+scripts/
+
+# dataset
+data/
+
+# results
+save/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

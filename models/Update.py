@@ -36,6 +36,7 @@ class LocalUpdate(object):
         optimizer = torch.optim.SGD(net.parameters(), lr=lr, momentum=0.5)
 
         epoch_loss = []
+        epoch_loss_ms = [] # mean of square
         if self.pretrain:
             local_eps = self.args.local_ep_pretrain
         else:
@@ -53,7 +54,9 @@ class LocalUpdate(object):
 
                 batch_loss.append(loss.item())
 
+            #print('batch_loss, local_eps_iter ', iter,': ', len(batch_loss))
             epoch_loss.append(sum(batch_loss)/len(batch_loss))
+            #epoch_loss_ms.append(sum(batch_loss))
 
         return net.state_dict(), sum(epoch_loss) / len(epoch_loss)
 

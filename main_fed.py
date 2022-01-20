@@ -7,6 +7,7 @@ import pickle
 import numpy as np
 import pandas as pd
 import torch
+from torchinfo import summary
 
 from utils.options import args_parser
 from utils.train_utils import get_data, get_model
@@ -52,8 +53,14 @@ if __name__ == '__main__':
         with open(dict_save_path, 'wb') as handle:
             pickle.dump((dict_users_train, dict_users_test), handle)
         
-    # build model
+    # build cloud model
     net_glob = get_model(args)
+    
+    # get model size
+    glob_summary = summary(net_glob)
+    print(glob_summary)
+    net_size = glob_summary.total_params
+
     net_glob.train()
     #print(list(net_glob.layer_hidden1.weight)[0])
 
@@ -70,9 +77,25 @@ if __name__ == '__main__':
     lr = args.lr
     results = []
 
+    ### simulate dynamic training + tx time
+    time_simu = 0
+    time_save_path= './save/user_config/var_time/{}_{}.csv'.format(args.dataset, args.num_users)
+    if os.path.exists(time_save_path):
+        # load shared config
+        print('Load existed time config...')
+        t_all = np.genfromtxt(time_save_path, delimiter=',')
+    else:
+        # generate new config and save
+        print('Generate new time config...')
+        t_all = np.zeros((args.num_users, args.epochs))
+        t_mean = np.random.randint(1, 5, args.num_users) # rand choose from 1~10
+        for u in range(args.num_users):
+            t_all[u] = np.random.poisson(t_mean[u], size=args.epochs) + 1
+
     for iter in range(args.epochs):
         t_geps_bgin = time.time()
-        time_locals = []
+        #time_locals = []
+        t_local = t_all[:, iter]
         
         w_glob = None
         loss_locals = []
@@ -103,11 +126,12 @@ if __name__ == '__main__':
             if w_glob is None:
                 w_glob = copy.deepcopy(w_local)
             else:
-                for k in w_glob.keys():
+                for k in w_glob.keys(): # layer by layer
                     w_glob[k] += w_local[k]
             
             t_leps_end = time.time()
-            time_locals.append(t_leps_end - t_leps_bgin)
+            #time_locals.append(t_leps_end - t_leps_bgin)
+            #time_locals.append(t_local[idx])
 
         lr *= args.lr_decay # default: no decay
 
@@ -125,13 +149,15 @@ if __name__ == '__main__':
         t_geps_end = time.time() # not include validation time
         time_glob = t_geps_end - t_geps_bgin
         time_train.append(time_glob)
-        time_local_avg = sum(time_locals) / len(time_locals)
+        #time_local_avg = sum(time_locals) / len(time_locals)
+        time_local_max = max(t_local[idxs_users])
+        time_simu += time_local_max
 
         if (iter + 1) % args.test_freq == 0:
             net_glob.eval()
             acc_test, loss_test = test_img(net_glob, dataset_test, args)
-            print('Round {:3d}, Average loss {:.3f}, Test loss {:.3f}, Test accuracy: {:.2f}, Avg local runtime: {:.2f}, global runtime: {:.2f}'.format(
-                iter, loss_avg, loss_test, acc_test, time_local_avg, time_glob))
+            print('Round {:3d}, Average loss {:.3f}, Test loss {:.3f}, Test accuracy: {:.2f}, Max local runtime: {:.2f}, Simu runtime: {:.2f}, global runtime: {:.2f}'.format(
+                iter, loss_avg, loss_test, acc_test, time_local_max, time_simu, time_glob))
 
 
             if best_acc is None or acc_test > best_acc:
@@ -143,9 +169,9 @@ if __name__ == '__main__':
             #     model_save_path = os.path.join(base_dir, 'fed/model_{}.pt'.format(iter + 1))
             #     torch.save(net_glob.state_dict(), model_save_path)
 
-            results.append(np.array([iter, loss_avg, loss_test, acc_test, best_acc, time_local_avg, time_glob]))
+            results.append(np.array([iter, loss_avg, loss_test, acc_test, best_acc, time_local_max, time_simu, time_glob]))
             final_results = np.array(results)
-            final_results = pd.DataFrame(final_results, columns=['epoch', 'loss_avg', 'loss_test', 'acc_test', 'best_acc', 'time_local_avg', 'time_glob'])
+            final_results = pd.DataFrame(final_results, columns=['epoch', 'loss_avg', 'loss_test', 'acc_test', 'best_acc', 'time_local_max', 'time_simu', 'time_glob'])
             final_results.to_csv(results_save_path, index=False)
         '''
         if (iter + 1) % 50 == 0:
@@ -154,4 +180,5 @@ if __name__ == '__main__':
             torch.save(net_best.state_dict(), best_save_path)
             torch.save(net_glob.state_dict(), model_save_path)
         '''
+    np.savetxt(time_save_path, t_all, delimiter=",")
     print('Best model, iter: {}, acc: {}'.format(best_epoch, best_acc))

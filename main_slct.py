@@ -7,6 +7,9 @@ import pickle
 import numpy as np
 import pandas as pd
 import torch
+import scipy.stats as st
+from torchinfo import summary
+from math import ceil
 
 from utils.options import args_parser
 from utils.train_utils import get_data, get_model
@@ -59,6 +62,12 @@ if __name__ == '__main__':
 
     # build model
     net_glob = get_model(args)
+
+    # get model size
+    glob_summary = summary(net_glob)
+    print(glob_summary)
+    net_size = glob_summary.total_params
+
     net_glob.train()
 
     # training
@@ -79,16 +88,38 @@ if __name__ == '__main__':
     results = []
 
     epsilon = 0.5 # exploitation rate
-    slct_cnt = np.zeros(args.num_users) 
+    alpha = 0.1 # penalty exp factor
+    confd = 0.95 
+    slct_cnt = np.zeros(args.num_users)
+    utility_hist = {} # clientID : utility
+    utility_stat = {} # clientID : utility
+    T = 5
 
+    ### simulate dynamic training + tx time
+    time_simu = 0
+    time_save_path= './save/user_config/var_time/{}_{}.csv'.format(args.dataset, args.num_users)
+    if os.path.exists(time_save_path):
+        # load shared config
+        print('Load existed time config...')
+        t_all = np.genfromtxt(time_save_path, delimiter=',')
+    else:
+        # generate new config and save
+        print('Generate new time config...')
+        t_all = np.zeros((args.num_users, args.epochs))
+        t_mean = np.random.randint(1, 5, args.num_users) # rand choose from 1~10
+        for u in range(args.num_users):
+            t_all[u] = np.random.poisson(t_mean[u], size=args.epochs) + 1
+
+    
     for iter in range(args.epochs):
         t_geps_bgin = time.time()
-        time_locals = []
+        #time_locals = []
+        t_local = t_all[:, iter]
         
         w_glob = None
         loss_locals = []
         m = max(int(args.frac * args.num_users), 1) # num of selected clients
-        
+
         if iter == 0: # first round
             idxs_users = np.random.choice(range(args.num_users), m, replace=False)
         else:
@@ -96,21 +127,64 @@ if __name__ == '__main__':
             keep top good_cli = m*epsilon utility client
             drop & random select (1-good_cli)
             '''
-            sorted_u = {k: v for k, v in sorted(utility.items(), key=lambda item: item[1], reverse=True)}
-            print('utility', sorted_u)
-            with open(utility_save_path, 'a') as fp:
-                    fp.write("{}\n".format(json.dumps(sorted_u)))
-            kept = []
             n_exploi = round(m*epsilon)
             n_explor = m - round(m*epsilon)
-            for k, v in sorted(utility.items(), key=lambda item: item[1], reverse=True):
-                kept.append(k)
-                if len(kept) == n_exploi:
-                    break
-            print('kept', kept)
-            rest_pool = list(set(range(args.num_users)) - set(idxs_users))
-            rest_sel = np.random.choice(rest_pool, n_explor, replace=False)
-            idxs_users = np.concatenate((kept, rest_sel))
+            sorted_u = {}
+            # ascending [explor...exploi]
+            for i, (k, v) in enumerate(sorted(utility_hist.items(), key=lambda item: item[1])):
+                sorted_u[k] = v
+                if i == len(utility_hist)-n_exploi:
+                    cutoff_utility = v * confd
+
+            # descending
+            #sorted_u = {k: v for k, v in sorted(utility_hist.items(), key=lambda item: item[1], reverse=True)}
+
+            # err: misunderstood of confd
+            #lob, upb = st.t.interval(confd, len(sorted_u.values())-1, loc=np.mean(sorted_u.values()), scale=st.sem(sorted_u.values()))            
+            
+            ### 
+            n_clip = ceil(len(sorted_u)*(1-confd))
+            n_pool = len(sorted_u) # init
+            pool_util = {} # candidate of this round
+            for k, v in sorted_u.items():
+                if v < cutoff_utility:
+                    n_pool -= 1
+                    continue
+                else:
+                    if len(pool_util) <= n_pool - n_clip: # util // prob
+                        pool_util[k] = v
+                        if len(pool_util) == n_pool - n_clip: # util upper bound
+                            util_upb = v
+                    else: # clipped part
+                        pool_util[k] = util_upb
+            
+            print('=== utility ===', len(sorted_u),'\n', sorted_u)
+            print('=== cutoff_utility ===\n', cutoff_utility)
+            print('=== pool_util ===', len(pool_util),'\n', pool_util)
+    
+            ### sample n_exploi clients by util from pool
+            pdf = np.array(list(pool_util.values()))/sum(pool_util.values())
+            user_exploi = np.random.choice(list(pool_util.keys()), n_exploi, p=pdf, replace=False)
+            print('exploi users', user_exploi)
+            assert len(user_exploi) == n_exploi
+
+            ### sample at most n_explor clients by speed from unexplored
+            rest_pool = list(set(range(args.num_users)) - set(pool_util.keys()))
+            print('=== rest_pool ===', len(rest_pool),'\n', rest_pool)
+            if len(rest_pool) > n_explor: # require sampling
+                rest_sel = np.random.choice(rest_pool, n_explor, replace=False)# random sample
+                #pdf = t_local[rest_pool]/sum(t_local[rest_pool])
+                #rest_sel = np.random.choice(rest_pool, n_explor, p=pdf, replace=False) # sample by speed
+                #rest_sel = sorted(t_local[rest_pool], reverse=True)[:n_explor+1] # top-n_explor by speed
+                idxs_users = np.concatenate((user_exploi, rest_sel))
+            
+            elif len(rest_pool) > 0: # all included, final num of participants will be less than m
+                idxs_users = np.concatenate((user_exploi, rest_pool))
+            else:
+                idxs_users = user_exploi
+
+            print('slct users', idxs_users)
+            assert len(idxs_users) <= m
 
         print("\n Round {}, lr: {:.6f}, {}".format(iter, lr, idxs_users))
         '''
@@ -120,8 +194,8 @@ if __name__ == '__main__':
             #print(dict_users_train[idx])
         '''
 
-        utility = {} # clientID : utility
-        
+        #utility_slct = {} # clientID : utility 
+
         for idx in idxs_users: # iter over selected clients
             t_leps_bgin = time.time()
 
@@ -133,7 +207,15 @@ if __name__ == '__main__':
             # loss: a float, avg loss over local epochs over batches
             #print('loss: ', loss)
             B_i = len(dict_users_train[idx])
-            utility[int(idx)] = np.sqrt(B_i*loss**2)
+            if int(idx) in utility_stat.keys():
+                utility_hist[int(idx)] = utility_stat[int(idx)]
+            else:
+                utility_hist[int(idx)] = utility_stat[int(idx)] = np.sqrt(B_i*loss**2)
+
+            # consider system hetero
+            if T < t_local[idx]:
+                utility_hist[int(idx)] *= (T/t_local[idx]) ** alpha
+
             slct_cnt[idx] += 1
 
             if w_glob is None:
@@ -143,7 +225,9 @@ if __name__ == '__main__':
                     w_glob[k] += w_local[k]
             
             t_leps_end = time.time()
-            time_locals.append(t_leps_end - t_leps_bgin)
+            #time_locals.append(t_leps_end - t_leps_bgin + t_local[idx])
+            #time_locals.append(t_local[idx])
+
 
         lr *= args.lr_decay # default: no decay
 
@@ -161,13 +245,15 @@ if __name__ == '__main__':
         t_geps_end = time.time() # not include validation time
         time_glob = t_geps_end - t_geps_bgin
         time_train.append(time_glob)
-        time_local_avg = sum(time_locals) / len(time_locals)
+        #time_local_avg = sum(time_locals) / len(time_locals)
+        time_local_max = max(t_local[idxs_users])
+        time_simu += time_local_max
 
         if (iter + 1) % args.test_freq == 0:
             net_glob.eval()
             acc_test, loss_test = test_img(net_glob, dataset_test, args)
-            print('Round {:3d}, Average loss {:.3f}, Test loss {:.3f}, Test accuracy: {:.2f}, Avg local runtime: {:.2f}, global runtime: {:.2f}'.format(
-                iter, loss_avg, loss_test, acc_test, time_local_avg, time_glob))
+            print('Round {:3d}, Average loss {:.3f}, Test loss {:.3f}, Test accuracy: {:.2f}, Max local runtime: {:.2f}, Simu runtime: {:.2f}, global runtime: {:.2f}'.format(
+                iter, loss_avg, loss_test, acc_test, time_local_max, time_simu, time_glob))
 
 
             if best_acc is None or acc_test > best_acc:
@@ -179,9 +265,9 @@ if __name__ == '__main__':
             #     model_save_path = os.path.join(base_dir, 'statsel/model_{}.pt'.format(iter + 1))
             #     torch.save(net_glob.state_dict(), model_save_path)
 
-            results.append(np.array([iter, loss_avg, loss_test, acc_test, best_acc, time_local_avg, time_glob]))
+            results.append(np.array([iter, loss_avg, loss_test, acc_test, best_acc, time_local_max, time_simu, time_glob]))
             final_results = np.array(results)
-            final_results = pd.DataFrame(final_results, columns=['epoch', 'loss_avg', 'loss_test', 'acc_test', 'best_acc', 'time_local_avg', 'time_glob'])
+            final_results = pd.DataFrame(final_results, columns=['epoch', 'loss_avg', 'loss_test', 'acc_test', 'best_acc', 'time_local_max', 'time_simu', 'time_glob'])
             final_results.to_csv(results_save_path, index=False)
             np.savetxt(slctcnt_save_path, slct_cnt, delimiter=",")
         ''' 
@@ -191,5 +277,9 @@ if __name__ == '__main__':
             torch.save(net_best.state_dict(), best_save_path)
             torch.save(net_glob.state_dict(), model_save_path)
         '''
+    # save history of utility of all explored clients
+    with open(utility_save_path, 'w') as fp:
+                    fp.write("{}\n".format(json.dumps(sorted_u)))
+    np.savetxt(time_save_path, t_all, delimiter=",")
     print('Best model, iter: {}, acc: {}'.format(best_epoch, best_acc))
     

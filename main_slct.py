@@ -20,8 +20,10 @@ import os
 import pdb
 import time
 import json
+import datetime
 
 if __name__ == '__main__':
+    t_prog_bgin = time.time()
     # reproduce randomness
     torch.manual_seed(1001)
     np.random.seed(1001)
@@ -281,5 +283,7 @@ if __name__ == '__main__':
     with open(utility_save_path, 'w') as fp:
                     fp.write("{}\n".format(json.dumps(sorted_u)))
     np.savetxt(time_save_path, t_all, delimiter=",")
+    t_prog = time.time() - t_prog_bgin
     print('Best model, iter: {}, acc: {}'.format(best_epoch, best_acc))
+    print('Program execution time:', datetime.timedelta(seconds=t_prog))
     

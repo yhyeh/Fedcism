@@ -3,14 +3,14 @@
 mp_test.py
 
 # script
-*.sh
-scripts/
+scripts/example
 
 # dataset
 data/
 
 # results
-save/
+save/cifar10
+save/mnist
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

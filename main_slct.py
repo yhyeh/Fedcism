@@ -209,10 +209,11 @@ if __name__ == '__main__':
             # loss: a float, avg loss over local epochs over batches
             #print('loss: ', loss)
             B_i = len(dict_users_train[idx])
-            if int(idx) in utility_stat.keys():
-                utility_hist[int(idx)] = utility_stat[int(idx)]
-            else:
-                utility_hist[int(idx)] = utility_stat[int(idx)] = np.sqrt(B_i*loss**2)
+            
+            #if int(idx) in utility_stat.keys():
+            #    utility_hist[int(idx)] = utility_stat[int(idx)]
+            #else:
+            utility_hist[int(idx)] = utility_stat[int(idx)] = np.sqrt(B_i*loss**2)
 
             # consider system hetero
             if T < t_local[idx]:

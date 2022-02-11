@@ -34,8 +34,8 @@ if __name__ == '__main__':
 
     base_dir = './save/{}/{}_iid{}_num{}_C{}_le{}/shard{}/{}/'.format(
         args.dataset, args.model, args.iid, args.num_users, args.frac, args.local_ep, args.shard_per_user, args.results_save)
-    if not os.path.exists(os.path.join(base_dir, 'statsel')):
-        os.makedirs(os.path.join(base_dir, 'statsel'), exist_ok=True)
+    if not os.path.exists(os.path.join(base_dir, 'var_utility')):
+        os.makedirs(os.path.join(base_dir, 'var_utility'), exist_ok=True)
 
     dataset_train, dataset_test, dict_users_train, dict_users_test = get_data(args)
     # dict_users_test is unused actually
@@ -73,9 +73,9 @@ if __name__ == '__main__':
     net_glob.train()
 
     # training
-    results_save_path = os.path.join(base_dir, 'statsel/results.csv')
-    slctcnt_save_path = os.path.join(base_dir, 'statsel/selection_cnt.csv')
-    utility_save_path = os.path.join(base_dir, 'statsel/utility.csv')
+    results_save_path = os.path.join(base_dir, 'var_utility/results.csv')
+    slctcnt_save_path = os.path.join(base_dir, 'var_utility/selection_cnt.csv')
+    utility_save_path = os.path.join(base_dir, 'var_utility/utility.csv')
     if os.path.exists(utility_save_path): # delete
         os.remove(utility_save_path)
 
@@ -265,7 +265,7 @@ if __name__ == '__main__':
                 best_epoch = iter
 
             # if (iter + 1) > args.start_saving:
-            #     model_save_path = os.path.join(base_dir, 'statsel/model_{}.pt'.format(iter + 1))
+            #     model_save_path = os.path.join(base_dir, 'var_utility/model_{}.pt'.format(iter + 1))
             #     torch.save(net_glob.state_dict(), model_save_path)
 
             results.append(np.array([iter, loss_avg, loss_test, acc_test, best_acc, time_local_max, time_simu, time_glob]))
@@ -275,8 +275,8 @@ if __name__ == '__main__':
             np.savetxt(slctcnt_save_path, slct_cnt, delimiter=",")
         ''' 
         if (iter + 1) % 50 == 0:
-            best_save_path = os.path.join(base_dir, 'statsel/best_{}.pt'.format(iter + 1))
-            model_save_path = os.path.join(base_dir, 'statsel/model_{}.pt'.format(iter + 1))
+            best_save_path = os.path.join(base_dir, 'var_utility/best_{}.pt'.format(iter + 1))
+            model_save_path = os.path.join(base_dir, 'var_utility/model_{}.pt'.format(iter + 1))
             torch.save(net_best.state_dict(), best_save_path)
             torch.save(net_glob.state_dict(), model_save_path)
         '''

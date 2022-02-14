@@ -90,28 +90,32 @@ def noniid_unbalanced(dataset, num_users, shard_per_user, rand_set_all=[]):
     :return:
     """
 
-    num_classes = len(np.unique(dataset.targets))
-    shard_per_class = int(shard_per_user * num_users / num_classes)
-
-    all_shards = list(range(num_classes)) * shard_per_class
-    np.random.shuffle(all_shards)
+    if len(rand_set_all) == 0: # just a wrap of non_iid() for test_data
+        return noniid(dataset, num_users, shard_per_user, rand_set_all)
     
-    # each user get unbalanced num of shards, the num followed normal distribution
-    pdf = norm.pdf(range(num_users) , loc = int(num_users/2) , scale = int(num_users/3))
-    pdf = pdf / pdf.sum()
-    # guarantee there are at least 1 shard per user
-    shard_owner = np.random.choice(range(num_users), size=len(all_shards)-num_users, p = pdf)
-    shard_owner = np.concatenate((shard_owner, range(num_users)), axis=None)
+    else:
+        num_classes = len(np.unique(dataset.targets))
+        shard_per_class = int(shard_per_user * num_users / num_classes)
 
-    assert(len(all_shards) == len(shard_owner))
-    #rand_set_all = np.array(rand_set_all).reshape((num_users, -1))
-    
-    unbalanced_rand_set = []
-    for i in range(num_users): unbalanced_rand_set.append([])
-    for shard, owner in zip(all_shards, shard_owner):
-        unbalanced_rand_set[owner].append(shard)
+        all_shards = list(range(num_classes)) * shard_per_class
+        np.random.shuffle(all_shards)
+        
+        # each user get unbalanced num of shards, the num followed normal distribution
+        pdf = norm.pdf(range(num_users) , loc = int(num_users/2) , scale = int(num_users/3))
+        pdf = pdf / pdf.sum()
+        # guarantee there are at least 1 shard per user
+        shard_owner = np.random.choice(range(num_users), size=len(all_shards)-num_users, p = pdf)
+        shard_owner = np.concatenate((shard_owner, range(num_users)), axis=None)
 
-    return noniid(dataset, num_users, shard_per_user, unbalanced_rand_set)
+        assert(len(all_shards) == len(shard_owner))
+        #rand_set_all = np.array(rand_set_all).reshape((num_users, -1))
+        
+        unbalanced_rand_set = []
+        for i in range(num_users): unbalanced_rand_set.append([])
+        for shard, owner in zip(all_shards, shard_owner):
+            unbalanced_rand_set[owner].append(shard)
+
+        return noniid(dataset, num_users, shard_per_user, unbalanced_rand_set)
 
 def noniid(dataset, num_users, shard_per_user, rand_set_all=[]):
     """
@@ -144,21 +148,26 @@ def noniid(dataset, num_users, shard_per_user, rand_set_all=[]):
 
         for i, idx in enumerate(leftover):
             x[i] = np.concatenate([x[i], [idx]])
-        idxs_dict[label] = x
+        idxs_dict[label] = x # dim: (shard, data point)
 
     # rand_set_all: user -> [shard for class1, shard for class3, ...]
-    if len(rand_set_all) == 0:
+    if len(rand_set_all) == 0: # without customized rand_set_all
         rand_set_all = list(range(num_classes)) * shard_per_class
         random.shuffle(rand_set_all)
         rand_set_all = np.array(rand_set_all).reshape((num_users, -1))
 
+    # statistical of data label distribution
+    distr_users = {} # userID : [123, (# data in class), ..., 320]->len=num_classes
+    
     # divide and assign
     for i in range(num_users):
         rand_set_label = rand_set_all[i]
         rand_set = []
+        distr_users[i] = [0 for i in range(num_classes)]
         for label in rand_set_label:
-            idx = np.random.choice(len(idxs_dict[label]), replace=False)
-            rand_set.append(idxs_dict[label].pop(idx))
+            shard_idx = np.random.choice(len(idxs_dict[label]), replace=False) # randomly pick a shard
+            distr_users[i][label] += len(idxs_dict[label][shard_idx])
+            rand_set.append(idxs_dict[label].pop(shard_idx))
         dict_users[i] = np.concatenate(rand_set)
 
     # test to guarantee user get data with noniidness
@@ -172,8 +181,11 @@ def noniid(dataset, num_users, shard_per_user, rand_set_all=[]):
     assert(len(test) == len(dataset))
     assert(len(set(list(test))) == len(dataset))
     '''
+    # test of distr_users
+    for u in range(num_users):
+        assert len(dict_users[u]) == sum(distr_users[u])
     
-    return dict_users, rand_set_all
+    return dict_users, rand_set_all, distr_users
 
 def noniid_replace(dataset, num_users, shard_per_user, rand_set_all=[]):
     """

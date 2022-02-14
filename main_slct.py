@@ -37,15 +37,16 @@ if __name__ == '__main__':
     if not os.path.exists(os.path.join(base_dir, 'statsel')):
         os.makedirs(os.path.join(base_dir, 'statsel'), exist_ok=True)
 
-    dataset_train, dataset_test, dict_users_train, dict_users_test = get_data(args)
+    dataset_train, dataset_test, dict_users_train, dict_users_test, distr_users, _ = get_data(args)
     # dict_users_test is unused actually
+    
     #print('type: ', type(dataset_test))
     #print('len: ', len(dataset_test))
-    
+    #print(distr_users)
 
     shard_path = './save/{}/{}_iid{}_num{}_C{}_le{}/shard{}/'.format(
         args.dataset, args.model, args.iid, args.num_users, args.frac, args.local_ep, args.shard_per_user)
-    dict_save_path = os.path.join(shard_path, 'unbalanced_dict_users.pkl')
+    dict_save_path = os.path.join(shard_path, 'unbalanced_dict_users_2.pkl')
     if os.path.exists(dict_save_path): # use old one
         print('Local data already exist!')
         with open(dict_save_path, 'rb') as handle:

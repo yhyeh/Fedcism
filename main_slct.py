@@ -13,6 +13,7 @@ from math import ceil
 
 from utils.options import args_parser
 from utils.train_utils import get_data, get_model
+from utils.distribution import cosine_similarity
 from models.Update import LocalUpdate
 from models.test import test_img
 import os
@@ -43,6 +44,8 @@ if __name__ == '__main__':
     #print('type: ', type(dataset_test))
     #print('len: ', len(dataset_test))
     #print(distr_users)
+    distr_uni = np.ones(args.num_classes)
+    distr_uni = distr_uni / np.linalg.norm(distr_uni)
 
     shard_path = './save/{}/{}_iid{}_num{}_C{}_le{}/shard{}/'.format(
         args.dataset, args.model, args.iid, args.num_users, args.frac, args.local_ep, args.shard_per_user)
@@ -97,6 +100,8 @@ if __name__ == '__main__':
     utility_hist = {} # clientID : utility
     utility_stat = {} # clientID : utility
     T = 5
+    cossim_glob_uni = np.zeros(args.epochs)
+    cossim_glob_uni_path = os.path.join(base_dir, 'statsel/cossim_glob_uni.csv')
 
     ### simulate dynamic training + tx time
     time_simu = 0
@@ -125,6 +130,7 @@ if __name__ == '__main__':
 
         if iter == 0: # first round
             idxs_users = np.random.choice(range(args.num_users), m, replace=False)
+            distr_glob = np.zeros(args.num_classes) # normalized
         else:
             '''
             keep top good_cli = m*epsilon utility client
@@ -209,6 +215,12 @@ if __name__ == '__main__':
             loss_locals.append(copy.deepcopy(loss))
             # loss: a float, avg loss over local epochs over batches
             #print('loss: ', loss)
+
+            # calculate global data distribution
+            distr_glob += distr_users[idx]
+            distr_glob = distr_glob / np.linalg.norm(distr_glob)
+
+            # calculate utility
             B_i = len(dict_users_train[idx])
             if int(idx) in utility_stat.keys():
                 utility_hist[int(idx)] = utility_stat[int(idx)]
@@ -244,6 +256,8 @@ if __name__ == '__main__':
         # print loss
         loss_avg = sum(loss_locals) / len(loss_locals)
         #loss_train.append(loss_avg)
+
+        cossim_glob_uni[iter] = cosine_similarity(distr_glob, distr_uni)
 
         t_geps_end = time.time() # not include validation time
         time_glob = t_geps_end - t_geps_bgin
@@ -284,6 +298,8 @@ if __name__ == '__main__':
     with open(utility_save_path, 'w') as fp:
                     fp.write("{}\n".format(json.dumps(sorted_u)))
     np.savetxt(time_save_path, t_all, delimiter=",")
+    np.savetxt(cossim_glob_uni_path, cossim_glob_uni, delimiter=",")
+
     t_prog = time.time() - t_prog_bgin
     print('Best model, iter: {}, acc: {}'.format(best_epoch, best_acc))
     print('Program execution time:', datetime.timedelta(seconds=t_prog))

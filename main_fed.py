@@ -30,10 +30,10 @@ if __name__ == '__main__':
 
     base_dir = './save/{}/{}_iid{}_num{}_C{}_le{}/shard{}/{}/'.format(
         args.dataset, args.model, args.iid, args.num_users, args.frac, args.local_ep, args.shard_per_user, args.results_save)
-    if not os.path.exists(os.path.join(base_dir, 'fed')):
-        os.makedirs(os.path.join(base_dir, 'fed'), exist_ok=True)
+    if not os.path.exists(os.path.join(base_dir, 'fedavg_cossim')):
+        os.makedirs(os.path.join(base_dir, 'fedavg_cossim'), exist_ok=True)
 
-    dataset_train, dataset_test, dict_users_train, dict_users_test = get_data(args)
+    dataset_train, dataset_test, dict_users_train, dict_users_test, distr_users, _ = get_data(args)
     '''
     print('type: ', type(dataset_test))
     print('len: ', len(dataset_test))
@@ -44,15 +44,15 @@ if __name__ == '__main__':
     '''
     shard_path = './save/{}/{}_iid{}_num{}_C{}_le{}/shard{}/'.format(
         args.dataset, args.model, args.iid, args.num_users, args.frac, args.local_ep, args.shard_per_user)
-    dict_save_path = os.path.join(shard_path, 'unbalanced_dict_users.pkl')
+    dict_save_path = os.path.join(shard_path, 'unbalanced_dict_users2.pkl')
     if os.path.exists(dict_save_path): # use old one
         print('Local data already exist!')
         with open(dict_save_path, 'rb') as handle:
-            (dict_users_train, dict_users_test) = pickle.load(handle)
+            (dict_users_train, dict_users_test, distr_users) = pickle.load(handle)
     else:
         print('Re dispatch data to local!')
         with open(dict_save_path, 'wb') as handle:
-            pickle.dump((dict_users_train, dict_users_test), handle)
+            pickle.dump((dict_users_train, dict_users_test, distr_users), handle)
         
     # build cloud model
     net_glob = get_model(args)
@@ -66,7 +66,7 @@ if __name__ == '__main__':
     #print(list(net_glob.layer_hidden1.weight)[0])
 
     # training
-    results_save_path = os.path.join(base_dir, 'fed/results.csv')
+    results_save_path = os.path.join(base_dir, 'fedavg_cossim/results.csv')
 
     loss_train = []
     time_train = []
@@ -77,6 +77,9 @@ if __name__ == '__main__':
 
     lr = args.lr
     results = []
+
+    cossim_glob_uni = np.zeros(args.epochs)
+    cossim_glob_uni_path = os.path.join(base_dir, 'fedavg_cossim/cossim_glob_uni.csv')
 
     ### simulate dynamic training + tx time
     time_simu = 0
@@ -123,6 +126,10 @@ if __name__ == '__main__':
             # loss: a float, avg loss over local epochs over batches
             #print('loss: ', loss)
 
+            # calculate global data distribution
+            distr_glob += distr_users[idx]
+            distr_glob = distr_glob / np.linalg.norm(distr_glob)
+
 
             if w_glob is None:
                 w_glob = copy.deepcopy(w_local)
@@ -146,6 +153,8 @@ if __name__ == '__main__':
         # print loss
         loss_avg = sum(loss_locals) / len(loss_locals)
         #loss_train.append(loss_avg)
+        
+        cossim_glob_uni[iter] = cosine_similarity(distr_glob, distr_uni)
 
         t_geps_end = time.time() # not include validation time
         time_glob = t_geps_end - t_geps_bgin
@@ -167,7 +176,7 @@ if __name__ == '__main__':
                 best_epoch = iter
 
             # if (iter + 1) > args.start_saving:
-            #     model_save_path = os.path.join(base_dir, 'fed/model_{}.pt'.format(iter + 1))
+            #     model_save_path = os.path.join(base_dir, 'fedavg_cossim/model_{}.pt'.format(iter + 1))
             #     torch.save(net_glob.state_dict(), model_save_path)
 
             results.append(np.array([iter, loss_avg, loss_test, acc_test, best_acc, time_local_max, time_simu, time_glob]))
@@ -176,12 +185,13 @@ if __name__ == '__main__':
             final_results.to_csv(results_save_path, index=False)
         '''
         if (iter + 1) % 50 == 0:
-            best_save_path = os.path.join(base_dir, 'fed/best_{}.pt'.format(iter + 1))
-            model_save_path = os.path.join(base_dir, 'fed/model_{}.pt'.format(iter + 1))
+            best_save_path = os.path.join(base_dir, 'fedavg_cossim/best_{}.pt'.format(iter + 1))
+            model_save_path = os.path.join(base_dir, 'fedavg_cossim/model_{}.pt'.format(iter + 1))
             torch.save(net_best.state_dict(), best_save_path)
             torch.save(net_glob.state_dict(), model_save_path)
         '''
     np.savetxt(time_save_path, t_all, delimiter=",")
+    np.savetxt(cossim_glob_uni_path, cossim_glob_uni, delimiter=",")
     t_prog = time.time() - t_prog_bgin
     print('Best model, iter: {}, acc: {}'.format(best_epoch, best_acc))
     print('Program execution time:', datetime.timedelta(seconds=t_prog))

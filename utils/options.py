@@ -6,6 +6,10 @@ import argparse
 
 def args_parser():
     parser = argparse.ArgumentParser()
+
+    # selection algorithm arg
+    parser.add_argument('--gamma', type=float, default=0.1, help="the importance of similarity in utility function")
+
     # federated arguments
     parser.add_argument('--epochs', type=int, default=10, help="rounds of training")
     parser.add_argument('--num_users', type=int, default=100, help="number of users: K")

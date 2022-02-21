@@ -11,6 +11,7 @@ from torchinfo import summary
 
 from utils.options import args_parser
 from utils.train_utils import get_data, get_model
+from utils.distribution import cosine_similarity
 from models.Update import LocalUpdate
 from models.test import test_img
 import os
@@ -42,9 +43,12 @@ if __name__ == '__main__':
         local_data_size.append(len(dict_users_train[idx]))
     print('local dataset size: ', local_data_size.sort())
     '''
+    distr_uni = np.ones(args.num_classes)
+    distr_uni = distr_uni / np.linalg.norm(distr_uni)
+
     shard_path = './save/{}/{}_iid{}_num{}_C{}_le{}/shard{}/'.format(
         args.dataset, args.model, args.iid, args.num_users, args.frac, args.local_ep, args.shard_per_user)
-    dict_save_path = os.path.join(shard_path, 'unbalanced_dict_users2.pkl')
+    dict_save_path = os.path.join(shard_path, 'unbalanced_dict_users_2.pkl')
     if os.path.exists(dict_save_path): # use old one
         print('Local data already exist!')
         with open(dict_save_path, 'rb') as handle:
@@ -105,6 +109,7 @@ if __name__ == '__main__':
         loss_locals = []
         m = max(int(args.frac * args.num_users), 1) # num of selected clients
         idxs_users = np.random.choice(range(args.num_users), m, replace=False)
+        distr_glob = np.zeros(args.num_classes) # normalized
 
 
         print("Round {}, lr: {:.6f}, {}".format(iter, lr, idxs_users))
@@ -156,6 +161,9 @@ if __name__ == '__main__':
         
         cossim_glob_uni[iter] = cosine_similarity(distr_glob, distr_uni)
 
+        print('global distribution: ', distr_glob)
+        print('cossim(global, uniform): ', cossim_glob_uni[iter])
+        
         t_geps_end = time.time() # not include validation time
         time_glob = t_geps_end - t_geps_bgin
         time_train.append(time_glob)

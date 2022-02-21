@@ -35,8 +35,8 @@ if __name__ == '__main__':
 
     base_dir = './save/{}/{}_iid{}_num{}_C{}_le{}/shard{}/{}/'.format(
         args.dataset, args.model, args.iid, args.num_users, args.frac, args.local_ep, args.shard_per_user, args.results_save)
-    if not os.path.exists(os.path.join(base_dir, 'utility_cossim')):
-        os.makedirs(os.path.join(base_dir, 'utility_cossim'), exist_ok=True)
+    if not os.path.exists(os.path.join(base_dir, 'algo1')):
+        os.makedirs(os.path.join(base_dir, 'algo1'), exist_ok=True)
 
     dataset_train, dataset_test, dict_users_train, dict_users_test, distr_users, _ = get_data(args)
     # dict_users_test is unused actually
@@ -77,9 +77,9 @@ if __name__ == '__main__':
     net_glob.train()
 
     # training
-    results_save_path = os.path.join(base_dir, 'utility_cossim/results.csv')
-    slctcnt_save_path = os.path.join(base_dir, 'utility_cossim/selection_cnt.csv')
-    utility_save_path = os.path.join(base_dir, 'utility_cossim/utility.csv')
+    results_save_path = os.path.join(base_dir, 'algo1/results.csv')
+    slctcnt_save_path = os.path.join(base_dir, 'algo1/selection_cnt.csv')
+    utility_save_path = os.path.join(base_dir, 'algo1/utility.csv')
     if os.path.exists(utility_save_path): # delete
         os.remove(utility_save_path)
 
@@ -101,7 +101,7 @@ if __name__ == '__main__':
     utility_stat = {} # clientID : utility
     T = 5
     cossim_glob_uni = np.zeros(args.epochs)
-    cossim_glob_uni_path = os.path.join(base_dir, 'utility_cossim/cossim_glob_uni.csv')
+    cossim_glob_uni_path = os.path.join(base_dir, 'algo1/cossim_glob_uni.csv')
 
     ### simulate dynamic training + tx time
     time_simu = 0
@@ -222,10 +222,12 @@ if __name__ == '__main__':
 
             # calculate utility
             B_i = len(dict_users_train[idx])
-            if int(idx) in utility_stat.keys():
-                utility_hist[int(idx)] = utility_stat[int(idx)]
-            else:
-                utility_hist[int(idx)] = utility_stat[int(idx)] = np.sqrt(B_i*loss**2)
+            #if int(idx) in utility_stat.keys():
+            #    utility_hist[int(idx)] = utility_stat[int(idx)]
+            #else:
+            print('gamma', args.gamma)
+            cossim_factor = 1+args.gamma*(1-cosine_similarity(distr_users[idx], distr_glob))
+            utility_hist[int(idx)] = utility_stat[int(idx)] = np.sqrt(B_i*loss**2)*cossim_factor
 
             # consider system hetero
             if T < t_local[idx]:
@@ -259,6 +261,9 @@ if __name__ == '__main__':
 
         cossim_glob_uni[iter] = cosine_similarity(distr_glob, distr_uni)
 
+        print('global distribution: ', distr_glob)
+        print('cossim(global, uniform): ', cossim_glob_uni[iter])
+
         t_geps_end = time.time() # not include validation time
         time_glob = t_geps_end - t_geps_bgin
         time_train.append(time_glob)
@@ -279,7 +284,7 @@ if __name__ == '__main__':
                 best_epoch = iter
 
             # if (iter + 1) > args.start_saving:
-            #     model_save_path = os.path.join(base_dir, 'utility_cossim/model_{}.pt'.format(iter + 1))
+            #     model_save_path = os.path.join(base_dir, 'algo1/model_{}.pt'.format(iter + 1))
             #     torch.save(net_glob.state_dict(), model_save_path)
 
             results.append(np.array([iter, loss_avg, loss_test, acc_test, best_acc, time_local_max, time_simu, time_glob]))
@@ -289,8 +294,8 @@ if __name__ == '__main__':
             np.savetxt(slctcnt_save_path, slct_cnt, delimiter=",")
         ''' 
         if (iter + 1) % 50 == 0:
-            best_save_path = os.path.join(base_dir, 'utility_cossim/best_{}.pt'.format(iter + 1))
-            model_save_path = os.path.join(base_dir, 'utility_cossim/model_{}.pt'.format(iter + 1))
+            best_save_path = os.path.join(base_dir, 'algo1/best_{}.pt'.format(iter + 1))
+            model_save_path = os.path.join(base_dir, 'algo1/model_{}.pt'.format(iter + 1))
             torch.save(net_best.state_dict(), best_save_path)
             torch.save(net_glob.state_dict(), model_save_path)
         '''

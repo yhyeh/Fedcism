@@ -90,7 +90,7 @@ def noniid_unbalanced(dataset, num_users, shard_per_user, rand_set_all=[]):
     :return:
     """
 
-    if len(rand_set_all) == 0: # just a wrap of non_iid() for test_data
+    if len(rand_set_all) != 0: # just a wrap of non_iid() for test_data
         return noniid(dataset, num_users, shard_per_user, rand_set_all)
     
     else:

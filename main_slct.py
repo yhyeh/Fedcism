@@ -33,10 +33,11 @@ if __name__ == '__main__':
     args = args_parser()
     args.device = torch.device('cuda:{}'.format(args.gpu) if torch.cuda.is_available() and args.gpu != -1 else 'cpu')
 
+    algo_dir = 'algo{}_r{}'.format(args.myalgo, args.gamma)
     base_dir = './save/{}/{}_iid{}_num{}_C{}_le{}/shard{}/{}/'.format(
         args.dataset, args.model, args.iid, args.num_users, args.frac, args.local_ep, args.shard_per_user, args.results_save)
-    if not os.path.exists(os.path.join(base_dir, 'algo1')):
-        os.makedirs(os.path.join(base_dir, 'algo1'), exist_ok=True)
+    if not os.path.exists(os.path.join(base_dir, algo_dir)):
+        os.makedirs(os.path.join(base_dir, algo_dir), exist_ok=True)
 
     dataset_train, dataset_test, dict_users_train, dict_users_test, distr_users, _ = get_data(args)
     # dict_users_test is unused actually
@@ -69,17 +70,22 @@ if __name__ == '__main__':
     # build model
     net_glob = get_model(args)
 
-    # get model size
+    ##################
+    # get model size #
+    ##################
     glob_summary = summary(net_glob)
-    print(glob_summary)
+    #print(glob_summary)
     net_size = glob_summary.total_params
 
-    net_glob.train()
 
-    # training
-    results_save_path = os.path.join(base_dir, 'algo1/results.csv')
-    slctcnt_save_path = os.path.join(base_dir, 'algo1/selection_cnt.csv')
-    utility_save_path = os.path.join(base_dir, 'algo1/utility.csv')
+    ############
+    # training #
+    ############
+    net_glob.train()
+    
+    results_save_path = os.path.join(base_dir, algo_dir, 'results.csv')
+    slctcnt_save_path = os.path.join(base_dir, algo_dir, 'selection_cnt.csv')
+    utility_save_path = os.path.join(base_dir, algo_dir, 'utility.csv')
     if os.path.exists(utility_save_path): # delete
         os.remove(utility_save_path)
 
@@ -101,7 +107,12 @@ if __name__ == '__main__':
     utility_stat = {} # clientID : utility
     T = 5
     cossim_glob_uni = np.zeros(args.epochs)
-    cossim_glob_uni_path = os.path.join(base_dir, 'algo1/cossim_glob_uni.csv')
+    cossim_glob_uni_path = os.path.join(base_dir, algo_dir, 'cossim_glob_uni.csv')
+    bacc_wndw_size = args.wndw_size
+    bacc_wndw = np.ones(bacc_wndw_size)
+    best_acc_prev = None
+    BACC_STABLE = False
+    stable_epoch = None
 
     ### simulate dynamic training + tx time
     time_simu = 0
@@ -167,19 +178,19 @@ if __name__ == '__main__':
                     else: # clipped part
                         pool_util[k] = util_upb
             
-            print('=== utility ===', len(sorted_u),'\n', sorted_u)
-            print('=== cutoff_utility ===\n', cutoff_utility)
-            print('=== pool_util ===', len(pool_util),'\n', pool_util)
+            #print('=== utility ===', len(sorted_u),'\n', sorted_u)
+            #print('=== cutoff_utility ===\n', cutoff_utility)
+            #print('=== pool_util ===', len(pool_util),'\n', pool_util)
     
             ### sample n_exploi clients by util from pool
             pdf = np.array(list(pool_util.values()))/sum(pool_util.values())
             user_exploi = np.random.choice(list(pool_util.keys()), n_exploi, p=pdf, replace=False)
-            print('exploi users', user_exploi)
+            #print('exploi users', user_exploi)
             assert len(user_exploi) == n_exploi
 
             ### sample at most n_explor clients by speed from unexplored
             rest_pool = list(set(range(args.num_users)) - set(pool_util.keys()))
-            print('=== rest_pool ===', len(rest_pool),'\n', rest_pool)
+            #print('=== rest_pool ===', len(rest_pool),'\n', rest_pool)
             if len(rest_pool) > n_explor: # require sampling
                 rest_sel = np.random.choice(rest_pool, n_explor, replace=False)# random sample
                 #pdf = t_local[rest_pool]/sum(t_local[rest_pool])
@@ -225,9 +236,19 @@ if __name__ == '__main__':
             #if int(idx) in utility_stat.keys():
             #    utility_hist[int(idx)] = utility_stat[int(idx)]
             #else:
-            print('gamma', args.gamma)
-            cossim_factor = 1+args.gamma*(1-cosine_similarity(distr_users[idx], distr_glob))
+            if args.myalgo == 2 and not BACC_STABLE:
+                # find similar client
+                #cossim_factor = 1+args.gamma*(cosine_similarity(distr_users[idx], distr_glob))
+                cossim_factor = 1
+                print('original utility, bacc_wndw.sum():', bacc_wndw.sum())
+            else:
+                # find complementary client
+                cossim_factor = 1+args.gamma*(1-cosine_similarity(distr_users[idx], distr_glob))
+                print('cossim utility, cossim_factor: ', cossim_factor)
+
+
             utility_hist[int(idx)] = utility_stat[int(idx)] = np.sqrt(B_i*loss**2)*cossim_factor
+
 
             # consider system hetero
             if T < t_local[idx]:
@@ -261,7 +282,7 @@ if __name__ == '__main__':
 
         cossim_glob_uni[iter] = cosine_similarity(distr_glob, distr_uni)
 
-        print('global distribution: ', distr_glob)
+        #print('global distribution: ', distr_glob)
         print('cossim(global, uniform): ', cossim_glob_uni[iter])
 
         t_geps_end = time.time() # not include validation time
@@ -277,25 +298,35 @@ if __name__ == '__main__':
             print('Round {:3d}, Average loss {:.3f}, Test loss {:.3f}, Test accuracy: {:.2f}, Max local runtime: {:.2f}, Simu runtime: {:.2f}, global runtime: {:.2f}'.format(
                 iter, loss_avg, loss_test, acc_test, time_local_max, time_simu, time_glob))
 
-
+            best_acc_prev = best_acc
             if best_acc is None or acc_test > best_acc:
                 net_best = copy.deepcopy(net_glob)
                 best_acc = acc_test
                 best_epoch = iter
 
+            if best_acc_prev is not None and not BACC_STABLE:
+                bacc_wndw[iter % bacc_wndw_size] = best_acc - best_acc_prev
+
+                if iter > bacc_wndw_size and bacc_wndw.sum() == 0:
+                    BACC_STABLE = True
+                    stable_epoch = iter
             # if (iter + 1) > args.start_saving:
-            #     model_save_path = os.path.join(base_dir, 'algo1/model_{}.pt'.format(iter + 1))
+            #     model_save_path = os.path.join(base_dir, algo_dir, 'model_{}.pt'.format(iter + 1))
             #     torch.save(net_glob.state_dict(), model_save_path)
 
-            results.append(np.array([iter, loss_avg, loss_test, acc_test, best_acc, time_local_max, time_simu, time_glob]))
+            print('=== mov_sum ===', bacc_wndw.sum())
+            #print(bacc_wndw)
+            print('Best acc stable point: epoch ', stable_epoch)
+
+            results.append(np.array([iter, loss_avg, loss_test, acc_test, best_acc, time_local_max, time_simu, time_glob, bacc_wndw.sum()]))
             final_results = np.array(results)
-            final_results = pd.DataFrame(final_results, columns=['epoch', 'loss_avg', 'loss_test', 'acc_test', 'best_acc', 'time_local_max', 'time_simu', 'time_glob'])
+            final_results = pd.DataFrame(final_results, columns=['epoch', 'loss_avg', 'loss_test', 'acc_test', 'best_acc', 'time_local_max', 'time_simu', 'time_glob', 'mov_sum'])
             final_results.to_csv(results_save_path, index=False)
             np.savetxt(slctcnt_save_path, slct_cnt, delimiter=",")
         ''' 
         if (iter + 1) % 50 == 0:
-            best_save_path = os.path.join(base_dir, 'algo1/best_{}.pt'.format(iter + 1))
-            model_save_path = os.path.join(base_dir, 'algo1/model_{}.pt'.format(iter + 1))
+            best_save_path = os.path.join(base_dir, algo_dir, 'best_{}.pt'.format(iter + 1))
+            model_save_path = os.path.join(base_dir, algo_dir, 'model_{}.pt'.format(iter + 1))
             torch.save(net_best.state_dict(), best_save_path)
             torch.save(net_glob.state_dict(), model_save_path)
         '''

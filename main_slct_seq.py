@@ -22,8 +22,10 @@ import pdb
 import time
 import json
 import datetime
+import termplotlib as tpl
 
 if __name__ == '__main__':
+    #pdb.set_trace()
     t_prog_bgin = time.time()
     # reproduce randomness
     torch.manual_seed(1001)
@@ -185,9 +187,20 @@ if __name__ == '__main__':
             ### sample n_exploi clients by util from pool
             pdf = np.array(list(pool_util.values()))/sum(pool_util.values())
             user_exploi = np.random.choice(list(pool_util.keys()), n_exploi, p=pdf, replace=False)
-            #print('exploi users', user_exploi)
+            print('candidate users', user_exploi)
             assert len(user_exploi) == n_exploi
-
+            #
+            # filter by cossim
+            #
+            user_exploi_filtered = []
+            init_cossim = cossim_glob_uni[iter-1]
+            for uid in user_exploi:
+                distr_cur = distr_glob + distr_users[uid]
+                pred_cossim = cosine_similarity(distr_uni, distr_cur)
+                if pred_cossim-init_cossim >= 0: # guarantee improvement
+                    user_exploi_filtered.append(uid)
+            print('users filtered by cossim', user_exploi_filtered)
+            
             ### sample at most n_explor clients by speed from unexplored
             rest_pool = list(set(range(args.num_users)) - set(pool_util.keys()))
             #print('=== rest_pool ===', len(rest_pool),'\n', rest_pool)
@@ -196,13 +209,14 @@ if __name__ == '__main__':
                 #pdf = t_local[rest_pool]/sum(t_local[rest_pool])
                 #rest_sel = np.random.choice(rest_pool, n_explor, p=pdf, replace=False) # sample by speed
                 #rest_sel = sorted(t_local[rest_pool], reverse=True)[:n_explor+1] # top-n_explor by speed
-                idxs_users = np.concatenate((user_exploi, rest_sel))
+                idxs_users = np.concatenate((user_exploi_filtered, rest_sel))
             
             elif len(rest_pool) > 0: # all included, final num of participants will be less than m
-                idxs_users = np.concatenate((user_exploi, rest_pool))
+                idxs_users = np.concatenate((user_exploi_filtered, rest_pool))
             else:
-                idxs_users = user_exploi
+                idxs_users = user_exploi_filtered
 
+            idxs_users = list(map(int, idxs_users))
             print('slct users', idxs_users)
             assert len(idxs_users) <= m
 
@@ -229,7 +243,12 @@ if __name__ == '__main__':
 
             # calculate global data distribution
             distr_glob += distr_users[idx]
-            distr_glob = distr_glob / np.linalg.norm(distr_glob)
+            #distr_glob = distr_glob / np.linalg.norm(distr_glob)
+            distr_glob = distr_glob / sum(distr_glob) # indicate the portion of label
+            print('global distribution(%): ', [format(100*x, '.2f') for x in distr_glob])
+            fig = tpl.figure()
+            fig.barh([round(100*x) for x in distr_glob], range(10), force_ascii=True)
+            fig.show()
 
             # calculate utility
             B_i = len(dict_users_train[idx])
@@ -237,22 +256,11 @@ if __name__ == '__main__':
             #    utility_hist[int(idx)] = utility_stat[int(idx)]
             #else:
             
-            elif args.myalgo == 3:
-                loss_diff = loss_train[-2] - loss_train[-1]
-                cossim_factor = 
+            #
+            # cossim_factor are not going to apply here
+            #
 
-            elif args.myalgo == 2 and not BACC_STABLE:
-                # find similar client
-                #cossim_factor = 1+args.gamma*(cosine_similarity(distr_users[idx], distr_glob))
-                cossim_factor = 1
-                print('original utility, bacc_wndw.sum():', bacc_wndw.sum())
-            else:
-                # find complementary client
-                cossim_factor = 1+args.gamma*(1-cosine_similarity(distr_users[idx], distr_glob))
-                print('cossim utility, cossim_factor: ', cossim_factor)
-
-
-            utility_hist[int(idx)] = utility_stat[int(idx)] = np.sqrt(B_i*loss**2)*cossim_factor
+            utility_hist[int(idx)] = utility_stat[int(idx)] = np.sqrt(B_i*loss**2)
 
 
             # consider system hetero
@@ -287,7 +295,6 @@ if __name__ == '__main__':
 
         cossim_glob_uni[iter] = cosine_similarity(distr_glob, distr_uni)
 
-        #print('global distribution: ', distr_glob)
         print('cossim(global, uniform): ', cossim_glob_uni[iter])
 
         t_geps_end = time.time() # not include validation time

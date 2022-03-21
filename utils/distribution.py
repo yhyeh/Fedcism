@@ -1,6 +1,7 @@
 import numpy as np
 import os
 import pickle
+import matplotlib.pyplot as plt
 
 def cosine_similarity(x : np.ndarray, y : np.ndarray) -> float:
     res = np.dot(x, y) / (np.linalg.norm(x) * np.linalg.norm(y))
@@ -18,8 +19,14 @@ class distr_profile:
         with open(config_path, 'rb') as handle:
             (self.dict_users_train, _, self.dict_distr) = pickle.load(handle)
             self.global_distr = None
-            self.local_vol = np.zeros(len(self.dict_distr))
-            self.label_distr = np.zeros(len(self.dict_distr[0]))
+            self.num_users = len(self.dict_distr)
+            self.num_classes = len(self.dict_distr[0])
+
+            # dim: num_users
+            self.local_vol = np.zeros(self.num_users, dtype=int)
+            
+            # dim: num_classes
+            self.label_distr = np.zeros(self.num_classes, dtype=int)
 
             for idx, k in enumerate(self.dict_distr.keys()):
                 local_distr = np.array(self.dict_distr[k])
@@ -51,13 +58,17 @@ class distr_profile:
         '''
         VIBI: Volumn ImBalance Indicator
         '''
-        return '{} = {}/{}'.format(self.local_vol.max()/self.local_vol.min(), self.local_vol.max(), self.local_vol.min())
+        return '{} = {}/{}'.format(self.local_vol.max()/self.local_vol.min(),
+                                   self.local_vol.max(),
+                                   self.local_vol.min())
 
     def get_globalLIBI(self) -> float:
         '''
         LIBI: Label ImBalance Indicator
         '''
-        return self.global_distr.max()/self.global_distr.min()
+        return '{} = {}/{}'.format(self.global_distr.max()/self.global_distr.min(),
+                                   self.global_distr.max(),
+                                   self.global_distr.min())
         # min could not be zero, otherwise num_classes should decrease
 
     def get_datasetInfo(self):
@@ -74,11 +85,28 @@ class distr_profile:
 
         return self.label_distr
     
-    def plot_local_distr(self):
+    def plot_local_distr(self, n_shard):
         '''
         stacked bar graph
         '''
-        pass
+        plt.figure(figsize=(20, 6))
+        plt.rcParams['font.size'] = 22
+
+        plt.title('Local Data Distribution - shard {}'.format(n_shard))
+        plt.xlabel('Client ID')
+        plt.ylabel('Data Volumn per Class')
+
+        base = np.zeros(self.num_users, dtype=int)
+        for c in range(self.num_classes):
+            c_vol = np.array([self.dict_distr[x][c] for x in range(self.num_users)])
+            plt.bar(range(self.num_users), c_vol,
+                    bottom=base, label='class {}'.format(c))
+            base += c_vol
+
+        plt.legend(loc='upper center', bbox_to_anchor=(0.5, -0.15),
+                fancybox=True, shadow=True, ncol=5)
+        return
+    
     def __repr__(self):
         '''
         print

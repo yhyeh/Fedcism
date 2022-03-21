@@ -11,6 +11,8 @@ def args_parser():
     parser.add_argument('--gamma', type=float, default=0.8, help="the importance of similarity in utility function")
     parser.add_argument('--myalgo', type=int, default=1, help="different design No. of utility function")
     parser.add_argument('--wndw_size', type=int, default=20, help="filtering diff of best acc for finding turning point")
+    parser.add_argument('--cls_imb', action='store_true', help='whether class imbalance or not')
+    parser.add_argument('--data_distr', type=str, default='dict_users.pkl', help="data distribution dict file")
 
     # federated arguments
     parser.add_argument('--epochs', type=int, default=10, help="rounds of training")

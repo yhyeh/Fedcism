@@ -82,7 +82,7 @@ def iid(dataset, num_users):
         all_idxs = list(set(all_idxs) - dict_users[i])
     return dict_users
 
-def noniid_unbalanced(dataset, num_users, shard_per_user, rand_set_all=[]):
+def noniid_unbalanced(dataset, num_users, shard_per_user, rand_set_all=[], cls_imbalance=False):
     """
     On top of noniid with customized rand_set_all / unbalanced_rand_set
     :param dataset:
@@ -95,9 +95,23 @@ def noniid_unbalanced(dataset, num_users, shard_per_user, rand_set_all=[]):
     
     else:
         num_classes = len(np.unique(dataset.targets))
-        shard_per_class = int(shard_per_user * num_users / num_classes)
+        num_samples = len(dataset)
 
-        all_shards = list(range(num_classes)) * shard_per_class
+        
+        if cls_imbalance:
+            # dtype of shard_per_class becomes list instead of const
+            # make class 0 as rare as 10% of original volume
+            balance_shard_per_class = int(shard_per_user * num_users / num_classes)
+            shard_per_class = np.array([balance_shard_per_class]*num_classes)
+            shard_per_class[0] *= 0.1
+            all_shards = []
+            for c in range(num_classes):
+                all_shards.extend([c]*shard_per_class[c])
+        
+        else:
+            shard_per_class = int(shard_per_user * num_users / num_classes)
+            all_shards = list(range(num_classes)) * shard_per_class
+
         np.random.shuffle(all_shards)
         
         # each user get unbalanced num of shards, the num followed normal distribution

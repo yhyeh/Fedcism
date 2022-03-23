@@ -1,6 +1,7 @@
 .idea/
 # test file
 mp_test.py
+_test*
 
 # script
 scripts/example

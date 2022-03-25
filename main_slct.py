@@ -13,7 +13,7 @@ from math import ceil
 
 from utils.options import args_parser
 from utils.train_utils import get_data, get_model
-from utils.distribution import cosine_similarity
+from utils.distribution import cosine_similarity, distr_profile
 from models.Update import LocalUpdate
 from models.test import test_img
 import os
@@ -22,6 +22,7 @@ import pdb
 import time
 import json
 import datetime
+import termplotlib as tpl
 
 if __name__ == '__main__':
     t_prog_bgin = time.time()
@@ -48,9 +49,9 @@ if __name__ == '__main__':
     distr_uni = np.ones(args.num_classes)
     distr_uni = distr_uni / np.linalg.norm(distr_uni)
 
-    shard_path = './save/{}/{}_iid{}_num{}_C{}_le{}/shard{}/'.format(
-        args.dataset, args.model, args.iid, args.num_users, args.frac, args.local_ep, args.shard_per_user)
-    dict_save_path = os.path.join(shard_path, 'unbalanced_dict_users_2.pkl')
+    shard_path = './save/{}/data_distr/num{}/shard{}/'.format(
+        args.dataset, args.num_users, args.shard_per_user)
+    dict_save_path = os.path.join(shard_path, args.data_distr)
     if os.path.exists(dict_save_path): # use old one
         print('Local data already exist!')
         with open(dict_save_path, 'rb') as handle:
@@ -59,6 +60,7 @@ if __name__ == '__main__':
         print('Re dispatch data to local!')
         with open(dict_save_path, 'wb') as handle:
             pickle.dump((dict_users_train, dict_users_test, distr_users), handle)
+            os.chmod(dict_save_path, 0o444) # read-only
         
     '''
     local_data_size = []
@@ -216,6 +218,19 @@ if __name__ == '__main__':
 
         #utility_slct = {} # clientID : utility 
 
+        
+        # In ADVANCE calculate global data distribution 
+        for idx in idxs_users:
+            distr_glob += distr_users[idx]
+        #distr_glob = distr_glob / np.linalg.norm(distr_glob)
+        distr_glob = distr_glob / sum(distr_glob) # indicate the portion of label
+        print('global distribution after round {}(%): {}'.format(iter, [format(100*x, '3.2f') for x in distr_glob]))
+        '''
+        fig = tpl.figure()
+        fig.barh([round(100*x) for x in distr_glob], range(10), force_ascii=True)
+        fig.show()
+        '''
+
         for idx in idxs_users: # iter over selected clients
             t_leps_bgin = time.time()
 
@@ -227,29 +242,41 @@ if __name__ == '__main__':
             # loss: a float, avg loss over local epochs over batches
             #print('loss: ', loss)
 
-            # calculate global data distribution
-            distr_glob += distr_users[idx]
-            distr_glob = distr_glob / np.linalg.norm(distr_glob)
-
-            # calculate utility
+            
+            # calculate utility for next round
             B_i = len(dict_users_train[idx])
             #if int(idx) in utility_stat.keys():
             #    utility_hist[int(idx)] = utility_stat[int(idx)]
             #else:
-            if args.myalgo == 2 and not BACC_STABLE:
+            
+            if args.myalgo == 0: # pure utility
+                cossim_factor = 1
+            
+            elif args.myalgo == 2: # adaptive
+                if iter == 0:
+                    cossim_factor = 1
+                else:
+                    # new gamma depends on 1/loss_avg
+                    print('client {} distribution(%): {}'.format(idx, [format(100*x/B_i, '3.2f') for x in distr_users[idx]]))
+
+                    cossim_factor = 1+(args.gamma/loss_avg)**2*(1-cosine_similarity(distr_users[idx], distr_glob))
+                    print('cossim_factor = {:.10f} = 1+{:.3f}*{:.5f}'.format(cossim_factor,
+                                                                args.gamma/loss_avg,
+                                                                1-cosine_similarity(distr_users[idx], distr_glob)))
+            else: # const
+                # find complementary client
+                cossim_factor = 1+args.gamma*(1-cosine_similarity(distr_users[idx], distr_glob))
+                #print('cossim utility, cossim_factor: ', cossim_factor)
+            '''
+            elif args.myalgo == 2 and not BACC_STABLE:
                 # find similar client
                 #cossim_factor = 1+args.gamma*(cosine_similarity(distr_users[idx], distr_glob))
                 cossim_factor = 1
                 print('original utility, bacc_wndw.sum():', bacc_wndw.sum())
-            else:
-                # find complementary client
-                cossim_factor = 1+args.gamma*(1-cosine_similarity(distr_users[idx], distr_glob))
-                print('cossim utility, cossim_factor: ', cossim_factor)
-
-
+            '''
             utility_hist[int(idx)] = utility_stat[int(idx)] = np.sqrt(B_i*loss**2)*cossim_factor
 
-
+            
             # consider system hetero
             if T < t_local[idx]:
                 utility_hist[int(idx)] *= (T/t_local[idx]) ** alpha
@@ -278,7 +305,7 @@ if __name__ == '__main__':
 
         # print loss
         loss_avg = sum(loss_locals) / len(loss_locals)
-        #loss_train.append(loss_avg)
+        loss_train.append(loss_avg)
 
         cossim_glob_uni[iter] = cosine_similarity(distr_glob, distr_uni)
 
@@ -314,9 +341,9 @@ if __name__ == '__main__':
             #     model_save_path = os.path.join(base_dir, algo_dir, 'model_{}.pt'.format(iter + 1))
             #     torch.save(net_glob.state_dict(), model_save_path)
 
-            print('=== mov_sum ===', bacc_wndw.sum())
+            #print('=== mov_sum ===', bacc_wndw.sum())
             #print(bacc_wndw)
-            print('Best acc stable point: epoch ', stable_epoch)
+            #print('Best acc stable point: epoch ', stable_epoch)
 
             results.append(np.array([iter, loss_avg, loss_test, acc_test, best_acc, time_local_max, time_simu, time_glob, bacc_wndw.sum()]))
             final_results = np.array(results)

@@ -28,11 +28,11 @@ if __name__ == '__main__':
     # parse args
     args = args_parser()
     args.device = torch.device('cuda:{}'.format(args.gpu) if torch.cuda.is_available() and args.gpu != -1 else 'cpu')
-
+    algo_dir = 'fedavg_c{}'.format(args.frac)
     base_dir = './save/{}/{}_iid{}_num{}_C{}_le{}/shard{}/{}/'.format(
         args.dataset, args.model, args.iid, args.num_users, args.frac, args.local_ep, args.shard_per_user, args.results_save)
-    if not os.path.exists(os.path.join(base_dir, 'fedavg_cossim')):
-        os.makedirs(os.path.join(base_dir, 'fedavg_cossim'), exist_ok=True)
+    if not os.path.exists(os.path.join(base_dir, algo_dir)):
+        os.makedirs(os.path.join(base_dir, algo_dir), exist_ok=True)
 
     dataset_train, dataset_test, dict_users_train, dict_users_test, distr_users, _ = get_data(args)
     '''
@@ -46,9 +46,9 @@ if __name__ == '__main__':
     distr_uni = np.ones(args.num_classes)
     distr_uni = distr_uni / np.linalg.norm(distr_uni)
 
-    shard_path = './save/{}/{}_iid{}_num{}_C{}_le{}/shard{}/'.format(
-        args.dataset, args.model, args.iid, args.num_users, args.frac, args.local_ep, args.shard_per_user)
-    dict_save_path = os.path.join(shard_path, 'unbalanced_dict_users_2.pkl')
+    shard_path = './save/{}/data_distr/num{}/shard{}/'.format(
+        args.dataset, args.num_users, args.shard_per_user)
+    dict_save_path = os.path.join(shard_path, args.data_distr)
     if os.path.exists(dict_save_path): # use old one
         print('Local data already exist!')
         with open(dict_save_path, 'rb') as handle:
@@ -57,20 +57,21 @@ if __name__ == '__main__':
         print('Re dispatch data to local!')
         with open(dict_save_path, 'wb') as handle:
             pickle.dump((dict_users_train, dict_users_test, distr_users), handle)
-        
+            os.chmod(dict_save_path, 0o444) # read-only
+
     # build cloud model
     net_glob = get_model(args)
     
     # get model size
     glob_summary = summary(net_glob)
-    print(glob_summary)
+    #print(glob_summary)
     net_size = glob_summary.total_params
 
     net_glob.train()
     #print(list(net_glob.layer_hidden1.weight)[0])
 
     # training
-    results_save_path = os.path.join(base_dir, 'fedavg_cossim/results.csv')
+    results_save_path = os.path.join(base_dir, algo_dir, 'results.csv')
 
     loss_train = []
     time_train = []
@@ -83,7 +84,7 @@ if __name__ == '__main__':
     results = []
 
     cossim_glob_uni = np.zeros(args.epochs)
-    cossim_glob_uni_path = os.path.join(base_dir, 'fedavg_cossim/cossim_glob_uni.csv')
+    cossim_glob_uni_path = os.path.join(base_dir, algo_dir, 'cossim_glob_uni.csv')
 
     ### simulate dynamic training + tx time
     time_simu = 0
@@ -133,7 +134,8 @@ if __name__ == '__main__':
 
             # calculate global data distribution
             distr_glob += distr_users[idx]
-            distr_glob = distr_glob / np.linalg.norm(distr_glob)
+            distr_glob = distr_glob / sum(distr_glob) # indicate the portion of label
+            #distr_glob = distr_glob / np.linalg.norm(distr_glob)
 
 
             if w_glob is None:
@@ -161,7 +163,7 @@ if __name__ == '__main__':
         
         cossim_glob_uni[iter] = cosine_similarity(distr_glob, distr_uni)
 
-        print('global distribution: ', distr_glob)
+        print('global distribution after round {}(%): {}'.format(iter, [format(100*x, '3.2f') for x in distr_glob]))
         print('cossim(global, uniform): ', cossim_glob_uni[iter])
         
         t_geps_end = time.time() # not include validation time
@@ -184,7 +186,7 @@ if __name__ == '__main__':
                 best_epoch = iter
 
             # if (iter + 1) > args.start_saving:
-            #     model_save_path = os.path.join(base_dir, 'fedavg_cossim/model_{}.pt'.format(iter + 1))
+            #     model_save_path = os.path.join(base_dir, algo_dir, 'model_{}.pt'.format(iter + 1))
             #     torch.save(net_glob.state_dict(), model_save_path)
 
             results.append(np.array([iter, loss_avg, loss_test, acc_test, best_acc, time_local_max, time_simu, time_glob]))
@@ -193,8 +195,8 @@ if __name__ == '__main__':
             final_results.to_csv(results_save_path, index=False)
         '''
         if (iter + 1) % 50 == 0:
-            best_save_path = os.path.join(base_dir, 'fedavg_cossim/best_{}.pt'.format(iter + 1))
-            model_save_path = os.path.join(base_dir, 'fedavg_cossim/model_{}.pt'.format(iter + 1))
+            best_save_path = os.path.join(base_dir, algo_dir, 'best_{}.pt'.format(iter + 1))
+            model_save_path = os.path.join(base_dir, algo_dir, 'model_{}.pt'.format(iter + 1))
             torch.save(net_best.state_dict(), best_save_path)
             torch.save(net_glob.state_dict(), model_save_path)
         '''

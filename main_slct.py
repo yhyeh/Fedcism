@@ -34,7 +34,15 @@ if __name__ == '__main__':
     args = args_parser()
     args.device = torch.device('cuda:{}'.format(args.gpu) if torch.cuda.is_available() and args.gpu != -1 else 'cpu')
 
-    algo_dir = 'algo{}_r{}'.format(args.myalgo, args.gamma)
+    if args.myalgo == 0:
+        algo_dir = 'utility'
+    elif args.myalgo == 1:
+        algo_dir = 'algo{}_r{}'.format(args.myalgo, args.gamma)
+    elif args.myalgo == 2:
+        algo_dir = 'algo{}_{}'.format(args.myalgo, 'loss-ratio')
+    else:
+        algo_dir = 'algo{}'.format(args.myalgo)
+
     base_dir = './save/{}/{}_iid{}_num{}_C{}_le{}/shard{}/{}/'.format(
         args.dataset, args.model, args.iid, args.num_users, args.frac, args.local_ep, args.shard_per_user, args.results_save)
     if not os.path.exists(os.path.join(base_dir, algo_dir)):
@@ -110,11 +118,16 @@ if __name__ == '__main__':
     T = 5
     cossim_glob_uni = np.zeros(args.epochs)
     cossim_glob_uni_path = os.path.join(base_dir, algo_dir, 'cossim_glob_uni.csv')
-    bacc_wndw_size = args.wndw_size
-    bacc_wndw = np.ones(bacc_wndw_size)
-    best_acc_prev = None
-    BACC_STABLE = False
-    stable_epoch = None
+    #bacc_wndw_size = args.wndw_size
+    #bacc_wndw = np.ones(bacc_wndw_size)
+    #best_acc_prev = None
+    #BACC_STABLE = False
+    #stable_epoch = None
+    wndw_offset = 50
+    mov_sum = np.zeros(args.epochs-args.wndw_size)
+    # mov_sum[i] = sum(loss_avg[i:i+args.wndw_size])
+    mov_ratio = np.zeros(args.epochs-args.wndw_size-wndw_offset) 
+    # mov_ratio[i] = mov_sum[i+wndw_offset]/mov_sum[i]
 
     ### simulate dynamic training + tx time
     time_simu = 0
@@ -139,6 +152,10 @@ if __name__ == '__main__':
         
         w_glob = None
         loss_locals = []
+    
+        #############
+        # selection #
+        #############
         m = max(int(args.frac * args.num_users), 1) # num of selected clients
 
         if iter == 0: # first round
@@ -209,28 +226,59 @@ if __name__ == '__main__':
             assert len(idxs_users) <= m
 
         print("\n Round {}, lr: {:.6f}, {}".format(iter, lr, idxs_users))
-        '''
-        for idx in idxs_users:
-            print('user: ', idx, '==================================')
-            print('dict_users_train[idx]: ', type(dict_users_train[idx]), len(dict_users_train[idx]))
-            #print(dict_users_train[idx])
-        '''
 
-        #utility_slct = {} # clientID : utility 
-
-        
         # In ADVANCE calculate global data distribution 
         for idx in idxs_users:
             distr_glob += distr_users[idx]
-        #distr_glob = distr_glob / np.linalg.norm(distr_glob)
         distr_glob = distr_glob / sum(distr_glob) # indicate the portion of label
         print('global distribution after round {}(%): {}'.format(iter, [format(100*x, '3.2f') for x in distr_glob]))
-        '''
+        ''' # terminal bar graph
         fig = tpl.figure()
         fig.barh([round(100*x) for x in distr_glob], range(10), force_ascii=True)
         fig.show()
         '''
+        ##############
+        # gamma eval #
+        ##############
+        gamma = 0
+        if args.myalgo == 0: # pure utility
+            # gamma = 0, cossim_factor = 1
+            pass
+        else:
+            if args.myalgo == 1: # const gamma
+                # find complementary client
+                gamma = args.gamma
+                #print('cossim utility, cossim_factor: ', cossim_factor)
 
+            elif args.myalgo == 2: # adaptive gamma
+                if iter >= args.wndw_size: # start calculate mov_sum
+                        mov_sum[iter-args.wndw_size] = sum(loss_train[iter-args.wndw_size:iter])
+                
+                if iter >= args.wndw_size+wndw_offset: # start calculate mov_ratio
+                    midx = iter-args.wndw_size-wndw_offset
+                    mov_ratio[midx] = mov_sum[midx+wndw_offset]/mov_sum[midx]
+                    gamma = mov_ratio[midx]**3
+                    print('adaptive gamma activate: ', gamma)
+                '''
+                if iter == 0:
+                    cossim_factor = 1
+                else:
+                    # new gamma depends on (1/loss_avg)^n
+                    print('client {} distribution(%): {}'.format(idx, [format(100*x/B_i, '3.2f') for x in distr_users[idx]]))
+
+                    cossim_factor = 1+(args.gamma/loss_avg)**2*(1-cosine_similarity(distr_users[idx], distr_glob))
+                    print('cossim_factor = {:.10f} = 1+{:.3f}*{:.5f}'.format(cossim_factor,
+                                                                args.gamma/loss_avg,
+                                                                1-cosine_similarity(distr_users[idx], distr_glob)))
+                '''
+        '''
+        elif args.myalgo == 2 and not BACC_STABLE:
+            # find similar client
+            #cossim_factor = 1+args.gamma*(cosine_similarity(distr_users[idx], distr_glob))
+            cossim_factor = 1
+            print('original utility, bacc_wndw.sum():', bacc_wndw.sum())
+        '''
+        
         for idx in idxs_users: # iter over selected clients
             t_leps_bgin = time.time()
 
@@ -249,31 +297,7 @@ if __name__ == '__main__':
             #    utility_hist[int(idx)] = utility_stat[int(idx)]
             #else:
             
-            if args.myalgo == 0: # pure utility
-                cossim_factor = 1
-            
-            elif args.myalgo == 2: # adaptive
-                if iter == 0:
-                    cossim_factor = 1
-                else:
-                    # new gamma depends on 1/loss_avg
-                    print('client {} distribution(%): {}'.format(idx, [format(100*x/B_i, '3.2f') for x in distr_users[idx]]))
-
-                    cossim_factor = 1+(args.gamma/loss_avg)**2*(1-cosine_similarity(distr_users[idx], distr_glob))
-                    print('cossim_factor = {:.10f} = 1+{:.3f}*{:.5f}'.format(cossim_factor,
-                                                                args.gamma/loss_avg,
-                                                                1-cosine_similarity(distr_users[idx], distr_glob)))
-            else: # const
-                # find complementary client
-                cossim_factor = 1+args.gamma*(1-cosine_similarity(distr_users[idx], distr_glob))
-                #print('cossim utility, cossim_factor: ', cossim_factor)
-            '''
-            elif args.myalgo == 2 and not BACC_STABLE:
-                # find similar client
-                #cossim_factor = 1+args.gamma*(cosine_similarity(distr_users[idx], distr_glob))
-                cossim_factor = 1
-                print('original utility, bacc_wndw.sum():', bacc_wndw.sum())
-            '''
+            cossim_factor = 1+gamma*(1-cosine_similarity(distr_users[idx], distr_glob))
             utility_hist[int(idx)] = utility_stat[int(idx)] = np.sqrt(B_i*loss**2)*cossim_factor
 
             
@@ -331,12 +355,14 @@ if __name__ == '__main__':
                 best_acc = acc_test
                 best_epoch = iter
 
+            '''
             if best_acc_prev is not None and not BACC_STABLE:
                 bacc_wndw[iter % bacc_wndw_size] = best_acc - best_acc_prev
 
                 if iter > bacc_wndw_size and bacc_wndw.sum() == 0:
                     BACC_STABLE = True
                     stable_epoch = iter
+            '''
             # if (iter + 1) > args.start_saving:
             #     model_save_path = os.path.join(base_dir, algo_dir, 'model_{}.pt'.format(iter + 1))
             #     torch.save(net_glob.state_dict(), model_save_path)
@@ -345,9 +371,9 @@ if __name__ == '__main__':
             #print(bacc_wndw)
             #print('Best acc stable point: epoch ', stable_epoch)
 
-            results.append(np.array([iter, loss_avg, loss_test, acc_test, best_acc, time_local_max, time_simu, time_glob, bacc_wndw.sum()]))
+            results.append(np.array([iter, loss_avg, loss_test, acc_test, best_acc, time_local_max, time_simu, time_glob]))
             final_results = np.array(results)
-            final_results = pd.DataFrame(final_results, columns=['epoch', 'loss_avg', 'loss_test', 'acc_test', 'best_acc', 'time_local_max', 'time_simu', 'time_glob', 'mov_sum'])
+            final_results = pd.DataFrame(final_results, columns=['epoch', 'loss_avg', 'loss_test', 'acc_test', 'best_acc', 'time_local_max', 'time_simu', 'time_glob'])
             final_results.to_csv(results_save_path, index=False)
             np.savetxt(slctcnt_save_path, slct_cnt, delimiter=",")
         ''' 

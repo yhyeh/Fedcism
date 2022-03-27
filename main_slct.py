@@ -114,7 +114,7 @@ if __name__ == '__main__':
     confd = 0.95 
     slct_cnt = np.zeros(args.num_users)
     utility_hist = {} # clientID : utility
-    utility_stat = {} # clientID : utility
+    utility_og = {} # clientID : utility
     T = 5
     cossim_glob_uni = np.zeros(args.epochs)
     cossim_glob_uni_path = os.path.join(base_dir, algo_dir, 'cossim_glob_uni.csv')
@@ -159,7 +159,7 @@ if __name__ == '__main__':
         m = max(int(args.frac * args.num_users), 1) # num of selected clients
 
         if iter == 0: # first round
-            idxs_users = np.random.choice(range(args.num_users), m, replace=False)
+            participants = np.random.choice(range(args.num_users), m, replace=False)
             distr_glob = np.zeros(args.num_classes) # normalized
         else:
             '''
@@ -215,20 +215,21 @@ if __name__ == '__main__':
                 #pdf = t_local[rest_pool]/sum(t_local[rest_pool])
                 #rest_sel = np.random.choice(rest_pool, n_explor, p=pdf, replace=False) # sample by speed
                 #rest_sel = sorted(t_local[rest_pool], reverse=True)[:n_explor+1] # top-n_explor by speed
-                idxs_users = np.concatenate((user_exploi, rest_sel))
+                participants = np.concatenate((user_exploi, rest_sel))
             
             elif len(rest_pool) > 0: # all included, final num of participants will be less than m
-                idxs_users = np.concatenate((user_exploi, rest_pool))
+                participants = np.concatenate((user_exploi, rest_pool))
             else:
-                idxs_users = user_exploi
+                participants = user_exploi
 
-            print('slct users', idxs_users)
-            assert len(idxs_users) <= m
+            print('slct users', participants)
+            assert len(participants) <= m
 
-        print("\n Round {}, lr: {:.6f}, {}".format(iter, lr, idxs_users))
+        participants = participants.astype(int)
+        print("\n Round {}, lr: {:.6f}, {}".format(iter, lr, participants))
 
         # In ADVANCE calculate global data distribution 
-        for idx in idxs_users:
+        for idx in participants:
             distr_glob += distr_users[idx]
         distr_glob = distr_glob / sum(distr_glob) # indicate the portion of label
         print('global distribution after round {}(%): {}'.format(iter, [format(100*x, '3.2f') for x in distr_glob]))
@@ -250,7 +251,7 @@ if __name__ == '__main__':
                 gamma = args.gamma
                 #print('cossim utility, cossim_factor: ', cossim_factor)
 
-            elif args.myalgo == 2: # adaptive gamma
+            elif args.myalgo == 2 or args.myalgo == 5: # adaptive gamma
                 if iter >= args.wndw_size: # start calculate mov_sum
                         mov_sum[iter-args.wndw_size] = sum(loss_train[iter-args.wndw_size:iter])
                 
@@ -279,44 +280,58 @@ if __name__ == '__main__':
             print('original utility, bacc_wndw.sum():', bacc_wndw.sum())
         '''
         
-        for idx in idxs_users: # iter over selected clients
+        for idx in participants:
             t_leps_bgin = time.time()
+            slct_cnt[idx] += 1
 
+            #################################
+            # local training & model upload #
+            #################################
             local = LocalUpdate(args=args, dataset=dataset_train, idxs=dict_users_train[idx])
             net_local = copy.deepcopy(net_glob)
-
             w_local, loss = local.train(net=net_local.to(args.device), lr=lr)
             loss_locals.append(copy.deepcopy(loss))
             # loss: a float, avg loss over local epochs over batches
             #print('loss: ', loss)
-
-            
-            # calculate utility for next round
-            B_i = len(dict_users_train[idx])
-            #if int(idx) in utility_stat.keys():
-            #    utility_hist[int(idx)] = utility_stat[int(idx)]
-            #else:
-            
-            cossim_factor = 1+gamma*(1-cosine_similarity(distr_users[idx], distr_glob))
-            utility_hist[int(idx)] = utility_stat[int(idx)] = np.sqrt(B_i*loss**2)*cossim_factor
-
-            
-            # consider system hetero
-            if T < t_local[idx]:
-                utility_hist[int(idx)] *= (T/t_local[idx]) ** alpha
-
-            slct_cnt[idx] += 1
-
             if w_glob is None:
                 w_glob = copy.deepcopy(w_local)
             else:
                 for k in w_glob.keys():
                     w_glob[k] += w_local[k]
+
+            #####################
+            # update utility_og #
+            #####################
+            B_i = len(dict_users_train[idx])
+            #if int(idx) in utility_og.keys():
+            #    utility_hist[int(idx)] = utility_og[int(idx)]
+            #else:
+            utility_og[idx] = np.sqrt(B_i*loss**2)
+
+            # consider system hetero
+            if T < t_local[idx]:
+                utility_og[idx] *= (T/t_local[idx]) ** alpha
+            
+            #print('utility_og updated:', idx , '->', utility_og[idx])
             
             t_leps_end = time.time()
             #time_locals.append(t_leps_end - t_leps_bgin + t_local[idx])
             #time_locals.append(t_local[idx])
 
+        
+        
+        if args.myalgo == 5: # consider cossim_factor for explored users
+            for idx in utility_og:
+                cossim_factor = 1 + gamma * (1-cosine_similarity(distr_users[idx], distr_glob))
+                utility_hist[idx] = utility_og[idx] * cossim_factor
+                #print('cossim considered', idx , '->', utility_hist[idx])
+
+        else:
+            for idx in participants:
+                cossim_factor = 1 + gamma * (1-cosine_similarity(distr_users[idx], distr_glob))
+                utility_hist[idx] = utility_og[idx] * cossim_factor
+                #print('cossim considered', idx , '->', utility_hist[idx])
+            
 
         lr *= args.lr_decay # default: no decay
 
@@ -340,7 +355,7 @@ if __name__ == '__main__':
         time_glob = t_geps_end - t_geps_bgin
         time_train.append(time_glob)
         #time_local_avg = sum(time_locals) / len(time_locals)
-        time_local_max = max(t_local[idxs_users])
+        time_local_max = max(t_local[participants])
         time_simu += time_local_max
 
         if (iter + 1) % args.test_freq == 0:

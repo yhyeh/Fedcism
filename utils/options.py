@@ -13,6 +13,7 @@ def args_parser():
     parser.add_argument('--wndw_size', type=int, default=20, help="filtering diff of best acc for finding turning point")
     parser.add_argument('--cls_imb', action='store_true', help='whether class imbalance or not')
     parser.add_argument('--data_distr', type=str, default='dict_users.pkl', help="data distribution dict file")
+    parser.add_argument('--deg', type=int, default=3, help="degree of loss ratio in gamma")
 
     # federated arguments
     parser.add_argument('--epochs', type=int, default=10, help="rounds of training")

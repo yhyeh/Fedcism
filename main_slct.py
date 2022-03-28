@@ -39,7 +39,9 @@ if __name__ == '__main__':
     elif args.myalgo == 1:
         algo_dir = 'algo{}_r{}'.format(args.myalgo, args.gamma)
     elif args.myalgo == 2:
-        algo_dir = 'algo{}_{}'.format(args.myalgo, 'loss-ratio')
+        algo_dir = 'algo{}_{}_deg{}'.format(args.myalgo, 'loss-ratio', args.deg)
+    elif args.myalgo == 5:
+        algo_dir = 'algo{}_deg{}'.format(args.myalgo, args.deg)
     else:
         algo_dir = 'algo{}'.format(args.myalgo)
 
@@ -225,8 +227,8 @@ if __name__ == '__main__':
             print('slct users', participants)
             assert len(participants) <= m
 
-        participants = participants.astype(int)
-        print("\n Round {}, lr: {:.6f}, {}".format(iter, lr, participants))
+        participants = participants.astype(int).tolist()
+        print("\n Round {}, deg: {}, {}".format(iter, args.deg, participants))
 
         # In ADVANCE calculate global data distribution 
         for idx in participants:
@@ -258,7 +260,7 @@ if __name__ == '__main__':
                 if iter >= args.wndw_size+wndw_offset: # start calculate mov_ratio
                     midx = iter-args.wndw_size-wndw_offset
                     mov_ratio[midx] = mov_sum[midx+wndw_offset]/mov_sum[midx]
-                    gamma = mov_ratio[midx]**3
+                    gamma = mov_ratio[midx]**args.deg
                     print('adaptive gamma activate: ', gamma)
                 '''
                 if iter == 0:

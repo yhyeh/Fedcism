@@ -40,7 +40,7 @@ if __name__ == '__main__':
         algo_dir = 'algo{}_r{}'.format(args.myalgo, args.gamma)
     elif args.myalgo == 2:
         algo_dir = 'algo{}_{}_deg{}'.format(args.myalgo, 'loss-ratio', args.deg)
-    elif args.myalgo == 5:
+    elif args.myalgo == 5 or args.myalgo == 3:
         algo_dir = 'algo{}_deg{}'.format(args.myalgo, args.deg)
     else:
         algo_dir = 'algo{}'.format(args.myalgo)
@@ -112,6 +112,9 @@ if __name__ == '__main__':
     results = []
 
     epsilon = 0.5 # exploitation rate
+    m = max(int(args.frac * args.num_users), 1) # num of selected clients
+    n_exploi = round(m*epsilon)
+    n_explor = m - round(m*epsilon)
     alpha = 0.1 # penalty exp factor
     confd = 0.95 
     slct_cnt = np.zeros(args.num_users)
@@ -158,59 +161,71 @@ if __name__ == '__main__':
         #############
         # selection #
         #############
-        m = max(int(args.frac * args.num_users), 1) # num of selected clients
+        user_exploi = []
 
         if iter == 0: # first round
             participants = np.random.choice(range(args.num_users), m, replace=False)
-            distr_glob = np.zeros(args.num_classes) # percentage
+            distr_glob = np.zeros(args.num_classes) # normalized
         
         else:
-            '''
-            keep top good_cli = m*epsilon utility client
-            drop & random select (1-good_cli)
-            '''
-            n_exploi = round(m*epsilon)
-            n_explor = m - round(m*epsilon)
-            sorted_u = {}
-            # ascending [explor...exploi]
-            for i, (k, v) in enumerate(sorted(utility_hist.items(), key=lambda item: item[1])):
-                sorted_u[k] = v
-                if i == len(utility_hist)-n_exploi:
-                    cutoff_utility = v * confd
+            ################
+            # exploitation #
+            ################
+            for sidx in range(n_exploi):
+                sorted_u = {}
+                # ascending [explor...exploi]
+                for i, (k, v) in enumerate(sorted(utility_hist.items(), key=lambda item: item[1])):
+                    sorted_u[k] = v
+                    if i == len(utility_hist)-n_exploi:
+                        cutoff_utility = v * confd
 
-            # descending
-            #sorted_u = {k: v for k, v in sorted(utility_hist.items(), key=lambda item: item[1], reverse=True)}
+                # descending
+                #sorted_u = {k: v for k, v in sorted(utility_hist.items(), key=lambda item: item[1], reverse=True)}
 
-            # err: misunderstood of confd
-            #lob, upb = st.t.interval(confd, len(sorted_u.values())-1, loc=np.mean(sorted_u.values()), scale=st.sem(sorted_u.values()))            
-            
-            ### 
-            n_clip = ceil(len(sorted_u)*(1-confd))
-            n_pool = len(sorted_u) # init
-            pool_util = {} # candidate of this round
-            for k, v in sorted_u.items():
-                if v < cutoff_utility:
-                    n_pool -= 1
-                    continue
-                else:
-                    if len(pool_util) <= n_pool - n_clip: # util // prob
-                        pool_util[k] = v
-                        if len(pool_util) == n_pool - n_clip: # util upper bound
-                            util_upb = v
-                    else: # clipped part
-                        pool_util[k] = util_upb
-            
-            #print('=== utility ===', len(sorted_u),'\n', sorted_u)
-            #print('=== cutoff_utility ===\n', cutoff_utility)
-            #print('=== pool_util ===', len(pool_util),'\n', pool_util)
-    
-            ### sample n_exploi clients by util from pool
-            pdf = np.array(list(pool_util.values()))/sum(pool_util.values())
-            user_exploi = np.random.choice(list(pool_util.keys()), n_exploi, p=pdf, replace=False)
+                # err: misunderstood of confd
+                #lob, upb = st.t.interval(confd, len(sorted_u.values())-1, loc=np.mean(sorted_u.values()), scale=st.sem(sorted_u.values()))            
+                
+                ### 
+                n_clip = ceil(len(sorted_u)*(1-confd))
+                n_pool = len(sorted_u) # init
+                pool_util = {} # candidate of this round
+                for k, v in sorted_u.items():
+                    if v < cutoff_utility or k in user_exploi:
+                        n_pool -= 1
+                        continue
+                    else:
+                        if len(pool_util) <= n_pool - n_clip: # util // prob
+                            pool_util[k] = v
+                            if len(pool_util) == n_pool - n_clip: # util upper bound
+                                util_upb = v
+                        else: # clipped part
+                            pool_util[k] = util_upb
+                
+                #print('=== utility ===', len(sorted_u),'\n', sorted_u)
+                #print('=== cutoff_utility ===\n', cutoff_utility)
+                #print('=== pool_util ===', len(pool_util),'\n', pool_util)
+        
+                ### sample n_exploi clients by util from pool
+                pdf = np.array(list(pool_util.values()))/sum(pool_util.values())
+                elect = np.random.choice(list(pool_util.keys()), 1, p=pdf, replace=False)[0]
+                user_exploi.append(elect)
+
+                ################################
+                # update utility w/ new cossim #
+                ################################
+                distr_glob += distr_users[elect]
+                distr_glob_fraction = distr_glob / sum(distr_glob)
+                for idx in utility_og:
+                    cossim_factor = 1 + gamma * (1-cosine_similarity(distr_users[idx], distr_glob_fraction))
+                    utility_hist[idx] = utility_og[idx] * cossim_factor
+
+
             #print('exploi users', user_exploi)
             assert len(user_exploi) == n_exploi
 
-            ### sample at most n_explor clients by speed from unexplored
+            ###############
+            # exploration #### sample at most n_explor clients by speed from unexplored
+            ###############
             rest_pool = list(set(range(args.num_users)) - set(pool_util.keys()))
             #print('=== rest_pool ===', len(rest_pool),'\n', rest_pool)
             if len(rest_pool) > n_explor: # require sampling
@@ -232,7 +247,7 @@ if __name__ == '__main__':
         print("\n Round {}, deg: {}, {}".format(iter, args.deg, participants))
 
         # In ADVANCE calculate global data distribution 
-        for idx in participants:
+        for idx in list(set(participants)-set(user_exploi)):
             distr_glob += distr_users[idx]
         distr_glob_fraction = distr_glob / sum(distr_glob) # indicate the portion of label
         print('global distribution after round {}(%): {}'.format(iter, [format(100*x, '3.2f') for x in distr_glob_fraction]))

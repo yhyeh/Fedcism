@@ -35,15 +35,15 @@ if __name__ == '__main__':
     args.device = torch.device('cuda:{}'.format(args.gpu) if torch.cuda.is_available() and args.gpu != -1 else 'cpu')
 
     if args.myalgo == 0:
-        algo_dir = 'utility'
+        algo_dir = 'oort_e{}'.format(args.epsilon)
     elif args.myalgo == 1:
-        algo_dir = 'algo{}_r{}'.format(args.myalgo, args.gamma)
+        algo_dir = 'algo{}_r{}_e{}'.format(args.myalgo, args.gamma, args.epsilon)
     elif args.myalgo == 2:
-        algo_dir = 'algo{}_{}_deg{}'.format(args.myalgo, 'loss-ratio', args.deg)
+        algo_dir = 'algo{}_{}_deg{}_e{}'.format(args.myalgo, 'loss-ratio', args.deg, args.epsilon)
     elif args.myalgo == 5 or args.myalgo == 3:
-        algo_dir = 'algo{}_deg{}'.format(args.myalgo, args.deg)
+        algo_dir = 'algo{}_deg{}_e{}_wof100'.format(args.myalgo, args.deg, args.epsilon)
     else:
-        algo_dir = 'algo{}'.format(args.myalgo)
+        algo_dir = 'algo{}_e{}'.format(args.myalgo, args.epsilon)
 
     base_dir = './save/{}/{}_iid{}_num{}_C{}_le{}/shard{}/{}/'.format(
         args.dataset, args.model, args.iid, args.num_users, args.frac, args.local_ep, args.shard_per_user, args.results_save)
@@ -111,10 +111,9 @@ if __name__ == '__main__':
     lr = args.lr
     results = []
 
-    epsilon = 0.5 # exploitation rate
     m = max(int(args.frac * args.num_users), 1) # num of selected clients
-    n_exploi = round(m*epsilon)
-    n_explor = m - round(m*epsilon)
+    n_exploi = round(m*args.epsilon)
+    n_explor = m - round(m*args.epsilon)
     alpha = 0.1 # penalty exp factor
     confd = 0.95 
     slct_cnt = np.zeros(args.num_users)
@@ -128,7 +127,7 @@ if __name__ == '__main__':
     #best_acc_prev = None
     #BACC_STABLE = False
     #stable_epoch = None
-    wndw_offset = 50
+    wndw_offset = 100
     mov_sum = np.zeros(args.epochs-args.wndw_size)
     # mov_sum[i] = sum(loss_avg[i:i+args.wndw_size])
     mov_ratio = np.zeros(args.epochs-args.wndw_size-wndw_offset) 
@@ -269,14 +268,14 @@ if __name__ == '__main__':
                 gamma = args.gamma
                 #print('cossim utility, cossim_factor: ', cossim_factor)
 
-            elif args.myalgo == 2 or args.myalgo == 5: # adaptive gamma
+            elif args.myalgo in [2, 3, 5]: # adaptive gamma
                 if iter >= args.wndw_size: # start calculate mov_sum
                         mov_sum[iter-args.wndw_size] = sum(loss_train[iter-args.wndw_size:iter])
                 
                 if iter >= args.wndw_size+wndw_offset: # start calculate mov_ratio
                     midx = iter-args.wndw_size-wndw_offset
                     mov_ratio[midx] = mov_sum[midx+wndw_offset]/mov_sum[midx]
-                    gamma = mov_ratio[midx]**args.deg
+                    gamma = (mov_ratio[midx]+0.05)**args.deg
                     print('adaptive gamma activate: ', gamma)
                 '''
                 if iter == 0:
@@ -338,7 +337,7 @@ if __name__ == '__main__':
 
         
         
-        if args.myalgo == 5: # consider cossim_factor for explored users
+        if args.myalgo in [3, 5]: # consider cossim_factor for explored users
             for idx in utility_og:
                 cossim_factor = 1 + gamma * (1-cosine_similarity(distr_users[idx], distr_glob_fraction))
                 utility_hist[idx] = utility_og[idx] * cossim_factor

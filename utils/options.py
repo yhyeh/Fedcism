@@ -12,6 +12,7 @@ def args_parser():
     parser.add_argument('--myalgo', type=int, default=1, help="different design No. of utility function")
     parser.add_argument('--wndw_size', type=int, default=20, help="filtering diff of best acc for finding turning point")
     parser.add_argument('--cls_imb', action='store_true', help='whether class imbalance or not')
+    parser.add_argument('--vol_imb', type=float, help='indicator of volume imbalance level')
     parser.add_argument('--data_distr', type=str, default='dict_users.pkl', help="data distribution dict file")
     parser.add_argument('--deg', type=int, default=3, help="degree of loss ratio in gamma")
     parser.add_argument('--epsilon', type=float, default=0.5, help="the fraction of exploitation")

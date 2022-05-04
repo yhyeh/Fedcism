@@ -83,7 +83,7 @@ def iid(dataset, num_users):
     return dict_users
 
 def noniid_unbalanced(dataset, num_users, shard_per_user, rand_set_all=[],
-                      cls_imbalance=False, clsimb_type='zipf'):
+                      cls_imbalance=False, vol_imbalance=3, clsimb_type='zipf'):
     """
     On top of noniid with customized rand_set_all / unbalanced_rand_set
     :param dataset:
@@ -110,8 +110,10 @@ def noniid_unbalanced(dataset, num_users, shard_per_user, rand_set_all=[],
                 shard_per_class = raw_shard_per_class / raw_shard_per_class.sum() * num_shards
             elif clsimb_type == 'htail':
                 # make class 0 keep original volume, other reduced to 10%
-                shard_per_class *= 0.1
-                shard_per_class[0] *= 10
+                raw_shard_per_class = shard_per_class.astype(float) * 0.1
+                raw_shard_per_class[0] *= 10
+                shard_per_class = raw_shard_per_class / raw_shard_per_class.sum() * num_shards
+
             #elif clsimb_type == 'gaussian':
             else:
                 # make class 0 as rare as 10% of original volume
@@ -130,7 +132,9 @@ def noniid_unbalanced(dataset, num_users, shard_per_user, rand_set_all=[],
         np.random.shuffle(all_shards)
         
         # each user get unbalanced num of shards, the num followed normal distribution
-        pdf = norm.pdf(range(num_users) , loc = int(num_users/2) , scale = int(num_users/3))
+        while vol_imbalance <= 0:
+            vol_imbalance = input('Warning: vol_imb should be positive, re-enter a value or kill the program...') 
+        pdf = norm.pdf(range(num_users) , loc = int(num_users/2) , scale = int(num_users/vol_imbalance))
         pdf = pdf / pdf.sum()
         # guarantee there are at least 1 shard per user
         assert len(all_shards) > num_users

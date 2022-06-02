@@ -28,7 +28,7 @@ if __name__ == '__main__':
     # parse args
     args = args_parser()
     args.device = torch.device('cuda:{}'.format(args.gpu) if torch.cuda.is_available() and args.gpu != -1 else 'cpu')
-    algo_dir = 'fedavg_c{}'.format(args.frac)
+    algo_dir = 'fedavg'
     base_dir = './save/{}/{}_iid{}_num{}_C{}_le{}/shard{}/{}/'.format(
         args.dataset, args.model, args.iid, args.num_users, args.frac, args.local_ep, args.shard_per_user, args.results_save)
     if not os.path.exists(os.path.join(base_dir, algo_dir)):
@@ -43,8 +43,14 @@ if __name__ == '__main__':
         local_data_size.append(len(dict_users_train[idx]))
     print('local dataset size: ', local_data_size.sort())
     '''
+    m = max(int(args.frac * args.num_users), 1) # num of selected clients
+    
     distr_uni = np.ones(args.num_classes)
     distr_uni = distr_uni / np.linalg.norm(distr_uni)
+    all_distr_glob_fraction = np.zeros((args.epochs, args.num_classes))
+    distr_glob_frac_path = os.path.join(base_dir, algo_dir, 'distr_glob_frac.csv')
+    distr_glob = np.zeros(args.num_classes) # normalized
+
 
     shard_path = './save/{}/data_distr/num{}/shard{}/'.format(
         args.dataset, args.num_users, args.shard_per_user)
@@ -108,9 +114,7 @@ if __name__ == '__main__':
         
         w_glob = None
         loss_locals = []
-        m = max(int(args.frac * args.num_users), 1) # num of selected clients
         idxs_users = np.random.choice(range(args.num_users), m, replace=False)
-        distr_glob = np.zeros(args.num_classes) # normalized
 
 
         print("Round {}, lr: {:.6f}, {}".format(iter, lr, idxs_users))
@@ -134,7 +138,9 @@ if __name__ == '__main__':
 
             # calculate global data distribution
             distr_glob += distr_users[idx]
-            distr_glob = distr_glob / sum(distr_glob) # indicate the portion of label
+            distr_glob_fraction = distr_glob / sum(distr_glob)
+            all_distr_glob_fraction[iter] = distr_glob_fraction
+            #distr_glob = distr_glob / sum(distr_glob) # indicate the portion of label
             #distr_glob = distr_glob / np.linalg.norm(distr_glob)
 
 
@@ -163,7 +169,7 @@ if __name__ == '__main__':
         
         cossim_glob_uni[iter] = cosine_similarity(distr_glob, distr_uni)
 
-        print('global distribution after round {}(%): {}'.format(iter, [format(100*x, '3.2f') for x in distr_glob]))
+        print('global distribution after round {}(%): {}'.format(iter, [format(100*x, '3.2f') for x in distr_glob_fraction]))
         print('cossim(global, uniform): ', cossim_glob_uni[iter])
         
         t_geps_end = time.time() # not include validation time
@@ -178,7 +184,7 @@ if __name__ == '__main__':
             acc_test, loss_test = test_img(net_glob, dataset_test, args)
             print('Round {:3d}, Average loss {:.3f}, Test loss {:.3f}, Test accuracy: {:.2f}, Max local runtime: {:.2f}, Simu runtime: {:.2f}, global runtime: {:.2f}'.format(
                 iter, loss_avg, loss_test, acc_test, time_local_max, time_simu, time_glob))
-
+            print(base_dir, algo_dir)
 
             if best_acc is None or acc_test > best_acc:
                 net_best = copy.deepcopy(net_glob)
@@ -189,9 +195,11 @@ if __name__ == '__main__':
             #     model_save_path = os.path.join(base_dir, algo_dir, 'model_{}.pt'.format(iter + 1))
             #     torch.save(net_glob.state_dict(), model_save_path)
 
-            results.append(np.array([iter, loss_avg, loss_test, acc_test, best_acc, time_local_max, time_simu, time_glob]))
+            results.append(np.array([iter, loss_avg, loss_test, acc_test, best_acc, 
+                                     time_local_max, time_simu, time_glob, idxs_users.tolist()]))
             final_results = np.array(results)
-            final_results = pd.DataFrame(final_results, columns=['epoch', 'loss_avg', 'loss_test', 'acc_test', 'best_acc', 'time_local_max', 'time_simu', 'time_glob'])
+            final_results = pd.DataFrame(final_results, columns=['epoch', 'loss_avg', 'loss_test', 'acc_test', 
+                            'best_acc', 'time_local_max', 'time_simu', 'time_glob', 'user_explor'])
             final_results.to_csv(results_save_path, index=False)
         '''
         if (iter + 1) % 50 == 0:
@@ -202,6 +210,8 @@ if __name__ == '__main__':
         '''
     np.savetxt(time_save_path, t_all, delimiter=",")
     np.savetxt(cossim_glob_uni_path, cossim_glob_uni, delimiter=",")
+    np.savetxt(distr_glob_frac_path, all_distr_glob_fraction, delimiter=",")
+
     t_prog = time.time() - t_prog_bgin
     print('Best model, iter: {}, acc: {}'.format(best_epoch, best_acc))
     print('Program execution time:', datetime.timedelta(seconds=t_prog))

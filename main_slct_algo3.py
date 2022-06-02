@@ -68,6 +68,7 @@ if __name__ == '__main__':
             (dict_users_train, dict_users_test, distr_users) = pickle.load(handle)
     else:
         print('Re dispatch data to local!')
+        os.makedirs(os.path.join(shard_path), exist_ok=True)
         with open(dict_save_path, 'wb') as handle:
             pickle.dump((dict_users_train, dict_users_test, distr_users), handle)
             os.chmod(dict_save_path, 0o444) # read-only
@@ -122,6 +123,8 @@ if __name__ == '__main__':
     T = 5
     cossim_glob_uni = np.zeros(args.epochs)
     cossim_glob_uni_path = os.path.join(base_dir, algo_dir, 'cossim_glob_uni.csv')
+    all_distr_glob_fraction = np.zeros((args.epochs, args.num_classes))
+    distr_glob_frac_path = os.path.join(base_dir, algo_dir, 'distr_glob_frac.csv')
     #bacc_wndw_size = args.wndw_size
     #bacc_wndw = np.ones(bacc_wndw_size)
     #best_acc_prev = None
@@ -163,7 +166,7 @@ if __name__ == '__main__':
         user_exploi = []
 
         if iter == 0: # first round
-            participants = np.random.choice(range(args.num_users), m, replace=False)
+            participants = user_explor = np.random.choice(range(args.num_users), m, replace=False)
             distr_glob = np.zeros(args.num_classes) # normalized
         
         else:
@@ -228,20 +231,23 @@ if __name__ == '__main__':
             rest_pool = list(set(range(args.num_users)) - set(pool_util.keys()))
             #print('=== rest_pool ===', len(rest_pool),'\n', rest_pool)
             if len(rest_pool) > n_explor: # require sampling
-                rest_sel = np.random.choice(rest_pool, n_explor, replace=False)# random sample
+                user_explor = np.random.choice(rest_pool, n_explor, replace=False)# random sample
                 #pdf = t_local[rest_pool]/sum(t_local[rest_pool])
-                #rest_sel = np.random.choice(rest_pool, n_explor, p=pdf, replace=False) # sample by speed
-                #rest_sel = sorted(t_local[rest_pool], reverse=True)[:n_explor+1] # top-n_explor by speed
-                participants = np.concatenate((user_exploi, rest_sel))
+                #user_explor = np.random.choice(rest_pool, n_explor, p=pdf, replace=False) # sample by speed
+                #user_explor = sorted(t_local[rest_pool], reverse=True)[:n_explor+1] # top-n_explor by speed
+                participants = np.concatenate((user_exploi, user_explor))
             
             elif len(rest_pool) > 0: # all included, final num of participants will be less than m
+                user_explor = rest_pool
                 participants = np.concatenate((user_exploi, rest_pool))
             else:
+                user_explor = np.empty(0)
                 participants = user_exploi
 
             print('slct users', participants)
             assert len(participants) <= m
 
+        user_explor = user_explor.astype(int).tolist()
         participants = participants.astype(int).tolist()
         print("\n Round {}, deg: {}, {}".format(iter, args.deg, participants))
 
@@ -250,6 +256,7 @@ if __name__ == '__main__':
             distr_glob += distr_users[idx]
         distr_glob_fraction = distr_glob / sum(distr_glob) # indicate the portion of label
         print('global distribution after round {}(%): {}'.format(iter, [format(100*x, '3.2f') for x in distr_glob_fraction]))
+        all_distr_glob_fraction[iter] = distr_glob_fraction
         ''' # terminal bar graph
         fig = tpl.figure()
         fig.barh([round(100*x) for x in distr_glob_fraction], range(10), force_ascii=True)
@@ -380,7 +387,8 @@ if __name__ == '__main__':
             acc_test, loss_test = test_img(net_glob, dataset_test, args)
             print('Round {:3d}, Average loss {:.3f}, Test loss {:.3f}, Test accuracy: {:.2f}, Max local runtime: {:.2f}, Simu runtime: {:.2f}, global runtime: {:.2f}'.format(
                 iter, loss_avg, loss_test, acc_test, time_local_max, time_simu, time_glob))
-
+            print(base_dir, algo_dir)
+            
             best_acc_prev = best_acc
             if best_acc is None or acc_test > best_acc:
                 net_best = copy.deepcopy(net_glob)
@@ -403,9 +411,12 @@ if __name__ == '__main__':
             #print(bacc_wndw)
             #print('Best acc stable point: epoch ', stable_epoch)
 
-            results.append(np.array([iter, loss_avg, loss_test, acc_test, best_acc, time_local_max, time_simu, time_glob]))
+            results.append(np.array([iter, loss_avg, loss_test, acc_test, best_acc, 
+                                     time_local_max, time_simu, time_glob, user_exploi, user_explor]))
             final_results = np.array(results)
-            final_results = pd.DataFrame(final_results, columns=['epoch', 'loss_avg', 'loss_test', 'acc_test', 'best_acc', 'time_local_max', 'time_simu', 'time_glob'])
+            final_results = pd.DataFrame(final_results, columns=['epoch', 'loss_avg', 'loss_test', 
+                                        'acc_test', 'best_acc', 'time_local_max', 
+                                        'time_simu', 'time_glob', 'user_exploi', 'user_explor'])
             final_results.to_csv(results_save_path, index=False)
             np.savetxt(slctcnt_save_path, slct_cnt, delimiter=",")
         ''' 
@@ -420,6 +431,7 @@ if __name__ == '__main__':
                     fp.write("{}\n".format(json.dumps(sorted_u)))
     np.savetxt(time_save_path, t_all, delimiter=",")
     np.savetxt(cossim_glob_uni_path, cossim_glob_uni, delimiter=",")
+    np.savetxt(distr_glob_frac_path, all_distr_glob_fraction, delimiter=",")
 
     t_prog = time.time() - t_prog_bgin
     print('Best model, iter: {}, acc: {}'.format(best_epoch, best_acc))

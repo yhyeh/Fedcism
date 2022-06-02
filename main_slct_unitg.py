@@ -45,7 +45,7 @@ if __name__ == '__main__':
     else:
         algo_dir = 'algo{}_e{}'.format(args.myalgo, args.epsilon)
 
-    algo_dir = 'inv_'+ algo_dir
+    algo_dir = 'uni_'+ algo_dir
     base_dir = './save/{}/{}_iid{}_num{}_C{}_le{}/shard{}/{}/'.format(
         args.dataset, args.model, args.iid, args.num_users, args.frac, args.local_ep, args.shard_per_user, args.results_save)
     if not os.path.exists(os.path.join(base_dir, algo_dir)):
@@ -219,7 +219,7 @@ if __name__ == '__main__':
                 distr_glob += distr_users[elect]
                 distr_glob_fraction = distr_glob / sum(distr_glob)
                 for idx in utility_og:
-                    cossim_factor = 1 + gamma * (cosine_similarity(distr_users[idx], distr_glob_fraction))
+                    cossim_factor = 1 + gamma * cosine_similarity(distr_users[idx] + distr_glob_fraction, distr_uni)
                     utility_hist[idx] = utility_og[idx] * cossim_factor
 
 
@@ -292,10 +292,10 @@ if __name__ == '__main__':
                     # new gamma depends on (1/loss_avg)^n
                     print('client {} distribution(%): {}'.format(idx, [format(100*x/B_i, '3.2f') for x in distr_users[idx]]))
 
-                    cossim_factor = 1+(args.gamma/loss_avg)**2*(cosine_similarity(distr_users[idx], distr_glob_fraction))
+                    cossim_factor = 1+(args.gamma/loss_avg)**2*(1-cosine_similarity(distr_users[idx], distr_glob_fraction))
                     print('cossim_factor = {:.10f} = 1+{:.3f}*{:.5f}'.format(cossim_factor,
                                                                 args.gamma/loss_avg,
-                                                                cosine_similarity(distr_users[idx], distr_glob_fraction)))
+                                                                1-cosine_similarity(distr_users[idx], distr_glob_fraction)))
                 '''
         '''
         elif args.myalgo == 2 and not BACC_STABLE:
@@ -347,13 +347,13 @@ if __name__ == '__main__':
         
         if args.myalgo in [3, 5]: # consider cossim_factor for explored users
             for idx in utility_og:
-                cossim_factor = 1 + gamma * (cosine_similarity(distr_users[idx], distr_glob_fraction))
+                cossim_factor = 1 + gamma * cosine_similarity(distr_users[idx] + distr_glob_fraction, distr_uni)
                 utility_hist[idx] = utility_og[idx] * cossim_factor
                 #print('cossim considered', idx , '->', utility_hist[idx])
 
         else:
             for idx in participants:
-                cossim_factor = 1 + gamma * (cosine_similarity(distr_users[idx], distr_glob_fraction))
+                cossim_factor = 1 + gamma * cosine_similarity(distr_users[idx] + distr_glob_fraction, distr_uni)
                 utility_hist[idx] = utility_og[idx] * cossim_factor
                 #print('cossim considered', idx , '->', utility_hist[idx])
             

@@ -3,19 +3,16 @@ import numpy as np
 import pandas as pd
 import pickle
 import matplotlib.pyplot as plt
-import json
-import re
 
 from utils.distribution import distr_profile, cosine_similarity
 
 
 def get_exp_result(dataset, distr, VI, RUN, data_distr_file, result_folder, 
-                   legends, shard_per_user, frac, acc_threshold, 
+                   legends, shard_per_user, frac, acc_threshold,
+                   num_users=100, global_ep = 500,
                    unbalanced=True, show_fig=True, save=False):
     
-    num_users = 100
     local_ep = 1
-    global_ep = 500
     
     fig_size = (16*0.3, 9*0.3)
     #plt.rcParams['font.size'] = 22
@@ -64,8 +61,9 @@ def get_exp_result(dataset, distr, VI, RUN, data_distr_file, result_folder,
 
     #frac = 0.1
     bacc_algos = []
+    fsim_algos = []
     required_time = {'epoch':[], 'time_simu':[]}
-    linemk = [':', '--', '-.']
+    linemk = [':', '--', '-.', '']
     
     '''
     fig, axs = plt.subplots(len(runs)+1, sharex=True, figsize=(fig_width, 12))
@@ -187,6 +185,7 @@ def get_exp_result(dataset, distr, VI, RUN, data_distr_file, result_folder,
                 ax.set_ylabel('Similarity( $\mathcal{D}_G$, $\mathcal{U}$ )')
                 ax.set_xlabel('Epoch')
                 #ax.set_ylim([0.4, 1])
+                fsim_algos.append(sim_g_u[-1])
                 
                 #fig.legend(loc='upper center', bbox_to_anchor=(0.5, -0.15),
                 #        fancybox=True, shadow=True, ncol=2)
@@ -304,9 +303,9 @@ def get_exp_result(dataset, distr, VI, RUN, data_distr_file, result_folder,
                 ax.legend(fontsize=8, ncol=len(algos), frameon=False)
 
                 if distr == 'cus': # alias
-                    fig_name = '{}_{}_s{}_c{}_vi{}_r{}'.format(alias, 'sparsez', shard_per_user, frac, VI, RUN)
+                    fig_name = '{}-{}_{}_s{}_c{}_vi{}_r{}'.format(alias, xlab, 'sparsez', shard_per_user, frac, VI, RUN)
                 else:            
-                    fig_name = '{}_{}_s{}_c{}_vi{}_r{}'.format(alias, distr, shard_per_user, frac, VI, RUN)
+                    fig_name = '{}-{}_{}_s{}_c{}_vi{}_r{}'.format(alias, xlab, distr, shard_per_user, frac, VI, RUN)
                 
                 fig_path = os.path.join('save', dataset, 'fig', 'mid', fig_name)
                 fig.tight_layout()
@@ -391,4 +390,4 @@ def get_exp_result(dataset, distr, VI, RUN, data_distr_file, result_folder,
     plt.legend()
     '''
 
-    return algos, color_algos, bacc_algos, required_time
+    return algos, color_algos, bacc_algos, required_time, fsim_algos

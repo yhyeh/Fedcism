@@ -52,10 +52,11 @@ for VI in 3; do
 done
 
 
+:'
 for VI in 5; do
-  for RUN in 1 2; do
+  for RUN in 0 1 2; do
 
-    for FRAC in 0.05 0.1; do
+    for FRAC in 0.15 0.2 0.25; do
       
       # shard 10 fed
       python3 main_fed.py --dataset ${DATA} --model cnn --num_classes ${NCLS} --epochs ${EP} --lr ${LR} \
@@ -93,3 +94,4 @@ for VI in 5; do
     done
   done
 done
+'

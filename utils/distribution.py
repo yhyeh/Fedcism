@@ -184,7 +184,7 @@ class distr_profile:
             ax.set_title('Local Data Distribution - {} - shard {}'.format(self.filename, n_shard), y=1.1)
         
         
-        return fig, ax, base_local_cls.mean()
+        return fig, ax, base_local_cls
 
     def __repr__(self):
         '''

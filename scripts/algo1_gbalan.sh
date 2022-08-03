@@ -9,7 +9,7 @@ DIR=cossim_gbalan_vi
 
 #for RUN in cls_imb; do
 #for RUN in cossim_test; do
-for G in 1 0.1 10; do
+for G in 2; do
   for RUN in 0 1 2; do
 
     for FRAC in 0.05 0.1; do

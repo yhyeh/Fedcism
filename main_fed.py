@@ -33,7 +33,9 @@ if __name__ == '__main__':
         args.dataset, args.model, args.iid, args.num_users, args.frac, args.local_ep, args.shard_per_user, args.results_save)
     if not os.path.exists(os.path.join(base_dir, algo_dir)):
         os.makedirs(os.path.join(base_dir, algo_dir), exist_ok=True)
-
+    
+    torch.manual_seed(int(time.time()))
+    np.random.seed(int(time.time()))
     dataset_train, dataset_test, dict_users_train, dict_users_test, distr_users, _ = get_data(args)
     '''
     print('type: ', type(dataset_test))
@@ -61,10 +63,15 @@ if __name__ == '__main__':
             (dict_users_train, dict_users_test, distr_users) = pickle.load(handle)
     else:
         print('Re dispatch data to local!')
+        os.makedirs(shard_path, exist_ok=True)
+
         with open(dict_save_path, 'wb') as handle:
             pickle.dump((dict_users_train, dict_users_test, distr_users), handle)
             os.chmod(dict_save_path, 0o444) # read-only
-
+    
+    torch.manual_seed(1001)
+    np.random.seed(1001)
+    
     # build cloud model
     net_glob = get_model(args)
     

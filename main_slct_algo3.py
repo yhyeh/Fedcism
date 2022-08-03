@@ -50,6 +50,8 @@ if __name__ == '__main__':
     if not os.path.exists(os.path.join(base_dir, algo_dir)):
         os.makedirs(os.path.join(base_dir, algo_dir), exist_ok=True)
 
+    torch.manual_seed(int(time.time()))
+    np.random.seed(int(time.time()))
     dataset_train, dataset_test, dict_users_train, dict_users_test, distr_users, _ = get_data(args)
     # dict_users_test is unused actually
     
@@ -68,11 +70,18 @@ if __name__ == '__main__':
             (dict_users_train, dict_users_test, distr_users) = pickle.load(handle)
     else:
         print('Re dispatch data to local!')
+        os.makedirs(shard_path, exist_ok=True)
+
         os.makedirs(os.path.join(shard_path), exist_ok=True)
         with open(dict_save_path, 'wb') as handle:
-            pickle.dump((dict_users_train, dict_users_test, distr_users), handle)
+            pickle.dump((dict_users_train, dataset_test, distr_users), handle)
             os.chmod(dict_save_path, 0o444) # read-only
-        
+    
+    #print('type: ', type(dataset_test))
+    #print('len: ', len(dataset_test))
+
+    torch.manual_seed(1001)
+    np.random.seed(1001)
     '''
     local_data_size = []
     for idx in range(args.num_users):

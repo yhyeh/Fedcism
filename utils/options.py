@@ -17,7 +17,7 @@ def args_parser():
     parser.add_argument('--deg', type=int, default=3, help="degree of loss ratio in gamma")
     parser.add_argument('--epsilon', type=float, default=0.5, help="the fraction of exploitation")
     parser.add_argument('--clsimb_type', type=str, default='zipf', help="type of imbalance class volume distribution")
-
+    parser.add_argument('--zipf_alpha', type=float, default=1, help='imbalance extent of zipf')
 
     # federated arguments
     parser.add_argument('--epochs', type=int, default=10, help="rounds of training")

@@ -83,7 +83,7 @@ def iid(dataset, num_users):
     return dict_users
 
 def noniid_unbalanced(dataset, num_users, shard_per_user, rand_set_all=[],
-                      cls_imbalance=False, vol_imbalance=3, clsimb_type='zipf'):
+                      cls_imbalance=False, vol_imbalance=3, zipf_alpha=1, clsimb_type='zipf'):
     """
     On top of noniid with customized rand_set_all / unbalanced_rand_set
     :param dataset:
@@ -106,6 +106,7 @@ def noniid_unbalanced(dataset, num_users, shard_per_user, rand_set_all=[],
 
             if clsimb_type in ['zipf', 'customize']:
                 zipf_ratio = 1/np.arange(1, num_classes+1)
+                zipf_ratio = zipf_ratio**zipf_alpha
                 raw_shard_per_class = shard_per_class * zipf_ratio # down sampled
                 shard_per_class = raw_shard_per_class / raw_shard_per_class.sum() * num_shards
             elif clsimb_type == 'htail':

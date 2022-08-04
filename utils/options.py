@@ -6,6 +6,19 @@ import argparse
 
 def args_parser():
     parser = argparse.ArgumentParser()
+
+    # selection algorithm arg
+    parser.add_argument('--gamma', type=float, default=0.8, help="the importance of similarity in utility function")
+    parser.add_argument('--myalgo', type=int, default=1, help="different design No. of utility function")
+    parser.add_argument('--wndw_size', type=int, default=20, help="filtering diff of best acc for finding turning point")
+    parser.add_argument('--cls_imb', action='store_true', help='whether class imbalance or not')
+    parser.add_argument('--vol_imb', type=float, help='indicator of volume imbalance level')
+    parser.add_argument('--data_distr', type=str, default='dict_users.pkl', help="data distribution dict file")
+    parser.add_argument('--deg', type=int, default=3, help="degree of loss ratio in gamma")
+    parser.add_argument('--epsilon', type=float, default=0.5, help="the fraction of exploitation")
+    parser.add_argument('--clsimb_type', type=str, default='zipf', help="type of imbalance class volume distribution")
+    parser.add_argument('--zipf_alpha', type=float, default=1, help='imbalance extent of zipf')
+
     # federated arguments
     parser.add_argument('--epochs', type=int, default=10, help="rounds of training")
     parser.add_argument('--num_users', type=int, default=100, help="number of users: K")

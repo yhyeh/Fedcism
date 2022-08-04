@@ -82,7 +82,8 @@ def iid(dataset, num_users):
         all_idxs = list(set(all_idxs) - dict_users[i])
     return dict_users
 
-def noniid_unbalanced(dataset, num_users, shard_per_user, rand_set_all=[]):
+def noniid_unbalanced(dataset, num_users, shard_per_user, rand_set_all=[],
+                      cls_imbalance=False, vol_imbalance=3, zipf_alpha=1, clsimb_type='zipf'):
     """
     On top of noniid with customized rand_set_all / unbalanced_rand_set
     :param dataset:
@@ -90,26 +91,101 @@ def noniid_unbalanced(dataset, num_users, shard_per_user, rand_set_all=[]):
     :return:
     """
 
-    if len(rand_set_all) == 0: # just a wrap of non_iid() for test_data
+    if len(rand_set_all) != 0: # just a wrap of non_iid() for test_data
         return noniid(dataset, num_users, shard_per_user, rand_set_all)
     
     else:
         num_classes = len(np.unique(dataset.targets))
-        shard_per_class = int(shard_per_user * num_users / num_classes)
+        num_samples = len(dataset)
+        num_shards = shard_per_user * num_users
+        
+        if cls_imbalance:
+            balance_shard_per_class = int(shard_per_user * num_users / num_classes)
+            shard_per_class = np.array([balance_shard_per_class]*num_classes)
+            # dtype of shard_per_class becomes list instead of const
 
-        all_shards = list(range(num_classes)) * shard_per_class
-        np.random.shuffle(all_shards)
+            if clsimb_type in ['zipf', 'customize']:
+                zipf_ratio = 1/np.arange(1, num_classes+1)
+                zipf_ratio = zipf_ratio**zipf_alpha
+                raw_shard_per_class = shard_per_class * zipf_ratio # down sampled
+                shard_per_class = raw_shard_per_class / raw_shard_per_class.sum() * num_shards
+            elif clsimb_type == 'htail':
+                # make class 0 keep original volume, other reduced to 10%
+                raw_shard_per_class = shard_per_class.astype(float) * 0.1
+                raw_shard_per_class[0] *= 10
+                shard_per_class = raw_shard_per_class / raw_shard_per_class.sum() * num_shards
+
+            #elif clsimb_type == 'gaussian':
+            elif clsimb_type == 'customize':
+                pass
+            else:
+                # make class 0 as rare as 10% of original volume
+                shard_per_class[0] *= 0.1
+            
+            shard_per_class = np.ceil(shard_per_class).astype(int)
+            
+            if clsimb_type == 'customize':
+                comm_shards = []
+                rare_shards = []
+                div_cls = round(num_classes*0.7)
+                for c in range(num_classes):
+                    if c < div_cls: # 0 ~ 6
+                        comm_shards.extend([c]*shard_per_class[c])
+                    else:
+                        rare_shards.extend([c]*shard_per_class[c])
+                np.random.shuffle(comm_shards)
+                np.random.shuffle(rare_shards)
+                
+            else:
+                all_shards = []
+                for c in range(num_classes):
+                    all_shards.extend([c]*shard_per_class[c])
+                np.random.shuffle(all_shards)
+
+            #print('shard_per_class', shard_per_class)
+            #print('all_shards', all_shards)
+        else:
+            shard_per_class = int(shard_per_user * num_users / num_classes)
+            all_shards = list(range(num_classes)) * shard_per_class
+
+            np.random.shuffle(all_shards)
         
         # each user get unbalanced num of shards, the num followed normal distribution
-        pdf = norm.pdf(range(num_users) , loc = int(num_users/2) , scale = int(num_users/3))
-        pdf = pdf / pdf.sum()
-        # guarantee there are at least 1 shard per user
-        shard_owner = np.random.choice(range(num_users), size=len(all_shards)-num_users, p = pdf)
-        shard_owner = np.concatenate((shard_owner, range(num_users)), axis=None)
-
-        assert(len(all_shards) == len(shard_owner))
-        #rand_set_all = np.array(rand_set_all).reshape((num_users, -1))
+        while vol_imbalance <= 0:
+            vol_imbalance = input('Warning: vol_imb should be positive, re-enter a value or kill the program...') 
         
+        if clsimb_type != 'customize':
+        
+            pdf = norm.pdf(range(num_users) , loc = int(num_users/2) , scale = int(num_users/vol_imbalance))
+            pdf = pdf / pdf.sum()
+            # guarantee there are at least 1 shard per user
+            assert len(all_shards) > num_users
+            shard_owner = np.random.choice(range(num_users), size=len(all_shards)-num_users, p = pdf)
+            shard_owner = np.concatenate((shard_owner, range(num_users)), axis=None)
+
+            assert(len(all_shards) == len(shard_owner))
+            #rand_set_all = np.array(rand_set_all).reshape((num_users, -1))
+            
+            
+        else:
+            vol_imbalance *=2
+            comm_pdf = norm.pdf(range(num_users) , loc = int(num_users/2) , scale = int(num_users/vol_imbalance))
+            comm_pdf = comm_pdf / comm_pdf.sum()
+            rare_pdf = 1-comm_pdf
+            rare_pdf = rare_pdf / rare_pdf.sum()
+            rare_frac = num_users/10
+            # guarantee there are at least 1 shard per user
+            assert len(comm_shards) > round(rare_frac*8)
+            assert len(rare_shards) > round(rare_frac*2)
+            comm_shard_owner = np.random.choice(range(num_users), size=len(comm_shards)-round(rare_frac*8), p = comm_pdf)
+            comm_shard_owner = np.concatenate((comm_shard_owner, range(round(rare_frac), round(rare_frac*9))), axis=None)
+            rare_shard_owner = np.random.choice(range(num_users), size=len(rare_shards)-round(rare_frac*2), p = rare_pdf)
+            rare_shard_owner = np.concatenate((rare_shard_owner, range(round(rare_frac)), range(round(rare_frac*9), num_users)), axis=None)
+
+            all_shards = np.concatenate((comm_shards, rare_shards), axis=None)
+            shard_owner = np.concatenate((comm_shard_owner, rare_shard_owner), axis=None)
+            assert(len(all_shards) == len(shard_owner))
+
         unbalanced_rand_set = []
         for i in range(num_users): unbalanced_rand_set.append([])
         for shard, owner in zip(all_shards, shard_owner):
@@ -148,7 +224,7 @@ def noniid(dataset, num_users, shard_per_user, rand_set_all=[]):
 
         for i, idx in enumerate(leftover):
             x[i] = np.concatenate([x[i], [idx]])
-        idxs_dict[label] = x # dim: (shard, data point)
+        idxs_dict[label] = x # dim: (shard, data point), type: list<np.array>
 
     # rand_set_all: user -> [shard for class1, shard for class3, ...]
     if len(rand_set_all) == 0: # without customized rand_set_all
@@ -160,14 +236,26 @@ def noniid(dataset, num_users, shard_per_user, rand_set_all=[]):
     distr_users = {} # userID : [123, (# data in class), ..., 320]->len=num_classes
     
     # divide and assign
+    idxs_dict_len = {k:len(v) for k, v in idxs_dict.items()}
+    idxs_dict_rec = {k:list(range(len(v))) for k, v in idxs_dict.items()}
     for i in range(num_users):
         rand_set_label = rand_set_all[i]
         rand_set = []
         distr_users[i] = [0 for i in range(num_classes)]
         for label in rand_set_label:
-            shard_idx = np.random.choice(len(idxs_dict[label]), replace=False) # randomly pick a shard
+            #print('class {} remaining shard opts {}/{}'.format(label, len(idxs_dict_rec[label]), len(idxs_dict[label])))
+
+            if len(idxs_dict_rec[label]) == 0: # all visited, renew dict (over sampling)
+                idxs_dict_rec[label] = list(range(len(idxs_dict[label])))
+                #print('class {} dict renewed:{}'.format(label, idxs_dict_rec[label]))
+            
+            shard_idx = np.random.choice(idxs_dict_rec[label], replace=False) # randomly pick a shard
+            idxs_dict_rec[label].remove(shard_idx)
             distr_users[i][label] += len(idxs_dict[label][shard_idx])
-            rand_set.append(idxs_dict[label].pop(shard_idx))
+            rand_set.append(idxs_dict[label][shard_idx])
+            
+            
+
         dict_users[i] = np.concatenate(rand_set)
 
     # test to guarantee user get data with noniidness

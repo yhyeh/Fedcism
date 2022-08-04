@@ -34,8 +34,12 @@ def get_data(args):
             dict_users_train = iid(dataset_train, args.num_users)
             dict_users_test = iid(dataset_test, args.num_users)
         else:
-            dict_users_train, rand_set_all, distr_users_train = noniid_unbalanced(dataset_train, args.num_users, args.shard_per_user)
-            dict_users_test, rand_set_all, distr_users_test = noniid_unbalanced(dataset_test, args.num_users, args.shard_per_user, rand_set_all=rand_set_all)
+            dict_users_train, rand_set_all, distr_users_train = noniid_unbalanced(
+                dataset_train, args.num_users, args.shard_per_user,
+                cls_imbalance=args.cls_imb, vol_imbalance=args.vol_imb, 
+                zipf_alpha=args.zipf_alpha, clsimb_type=args.clsimb_type)
+            dict_users_test, rand_set_all, distr_users_test = noniid_unbalanced(
+                dataset_test, args.num_users, args.shard_per_user, rand_set_all=rand_set_all)
     elif args.dataset == 'cifar10':
         dataset_train = datasets.CIFAR10('data/cifar10', train=True, download=True, transform=trans_cifar10_train)
         dataset_test = datasets.CIFAR10('data/cifar10', train=False, download=True, transform=trans_cifar10_val)
@@ -43,8 +47,13 @@ def get_data(args):
             dict_users_train = iid(dataset_train, args.num_users)
             dict_users_test = iid(dataset_test, args.num_users)
         else:
-            dict_users_train, rand_set_all, distr_users_train = noniid_unbalanced(dataset_train, args.num_users, args.shard_per_user)
-            dict_users_test, rand_set_all, distr_users_test = noniid_unbalanced(dataset_test, args.num_users, args.shard_per_user, rand_set_all=rand_set_all)
+            dict_users_train, rand_set_all, distr_users_train = noniid_unbalanced(
+                dataset_train, args.num_users, args.shard_per_user,
+                cls_imbalance=args.cls_imb, vol_imbalance=args.vol_imb, 
+                zipf_alpha=args.zipf_alpha, clsimb_type=args.clsimb_type)
+            dict_users_test, rand_set_all, distr_users_test = noniid_unbalanced(
+                dataset_test, args.num_users, args.shard_per_user, rand_set_all=rand_set_all)
+
     elif args.dataset == 'cifar100':
         dataset_train = datasets.CIFAR100('data/cifar100', train=True, download=True, transform=trans_cifar100_train)
         dataset_test = datasets.CIFAR100('data/cifar100', train=False, download=True, transform=trans_cifar100_val)
@@ -52,8 +61,12 @@ def get_data(args):
             dict_users_train = iid(dataset_train, args.num_users)
             dict_users_test = iid(dataset_test, args.num_users)
         else:
-            dict_users_train, rand_set_all, distr_users_train = noniid_unbalanced(dataset_train, args.num_users, args.shard_per_user)
-            dict_users_test, rand_set_all, distr_users_test = noniid_unbalanced(dataset_test, args.num_users, args.shard_per_user, rand_set_all=rand_set_all)
+            dict_users_train, rand_set_all, distr_users_train = noniid_unbalanced(
+                dataset_train, args.num_users, args.shard_per_user,
+                cls_imbalance=args.cls_imb, vol_imbalance=args.vol_imb,
+                zipf_alpha=args.zipf_alpha, clsimb_type=args.clsimb_type)
+            dict_users_test, rand_set_all, distr_users_test = noniid_unbalanced(
+                dataset_test, args.num_users, args.shard_per_user, rand_set_all=rand_set_all)
     else:
         exit('Error: unrecognized dataset')
 

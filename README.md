@@ -1,26 +1,18 @@
-# Federated Learning with Local and Global Representations
+# Distribution-Aware Participant Selection for Federated Learning
 
-> Pytorch implementation for federated learning with local and global representations.
+> Pytorch implementation for **Fedcism**, a participant selection framework based on Class Imbalance using Similarity Measurement. 
+> By adaptively blending the distribution similarity factor into the utility function that can determine the sampling priority of participant selection, our method can tolerate various levels of data imbalance while penalizing straggler with acceptable computation overhead in aggregator.
 
 Correspondence to: 
-  - Paul Liang (pliang@cs.cmu.edu)
-  - Terrance Liu (terrancl@cs.cmu.edu)
+  - Yu-Hsuan Yeh @yhyeh (yhyeh.cs09@nycu.edu.tw)
+  - Kate C.J. Lin (katelin@cs.nycu.edu.tw)
   
 ## Paper
 
-[**Think Locally, Act Globally: Federated Learning with Local and Global Representations**](https://arxiv.org/abs/2001.01523)<br>
-[Paul Pu Liang*](http://www.cs.cmu.edu/~pliang/), Terrance Liu*, [Liu Ziyin](http://cat.phys.s.u-tokyo.ac.jp/~zliu/), [Ruslan Salakhutdinov](https://www.cs.cmu.edu/~rsalakhu/), and [Louis-Philippe Morency](https://www.cs.cmu.edu/~morency/)<br>
-NeurIPS 2019 Workshop on Federated Learning (distinguished student paper award). (*equal contribution)
+[**Distribution-Aware Participant Selection for Federated Learning**](https://)<br>
+[Yu-Hsuan Yeh](https://www.linkedin.com/in/yhyeh/), [Kate C.J. Lin](https://people.cs.nctu.edu.tw/~katelin/)<br>
 
-If you find this repository useful, please cite our paper:
-```
-@article{liang2020think,
-  title={Think locally, act globally: Federated learning with local and global representations},
-  author={Liang, Paul Pu and Liu, Terrance and Ziyin, Liu and Salakhutdinov, Ruslan and Morency, Louis-Philippe},
-  journal={arXiv preprint arXiv:2001.01523},
-  year={2020}
-}
-```
+If you find this repository useful, please cite our paper.
 
 ## Installation
 
@@ -35,56 +27,28 @@ Pillow 4.1.1</br>
 
 The next step is to clone the repository:
 ```bash
-git clone https://github.com/pliang279/LG-FedAvg.git
+git clone https://github.com/
 ```
 
 ## Data
 
-We run FedAvg and LG-FedAvg experiments on MNIST ([link](http://yann.lecun.com/exdb/mnist/)) and CIFAR10 ([link](https://www.cs.toronto.edu/~kriz/cifar.html)). See our paper for a description how we process and partition the data for federated learning experiments.
+We run FedAvg, Oort and Fedcism experiments on CIFAR-10 ([link](https://www.cs.toronto.edu/~kriz/cifar.html)). See our paper for a description how we process and partition the data for federated learning experiments.
 
-## FedAvg
-
+## Training Reproduction
 Results can be reproduced running the following:
 
+### Fedcism (algo3), Fedcism w/ constant-gamma(algo1), Oort (algo0)
+#### CIFAR10 
+Please refer to example script [scripts/algo3_gbalan.sh](scripts/algo3_gbalan.sh).
+
+### FedAvg
 #### MNIST
 > python main_fed.py --dataset mnist --model mlp --num_classes 10 --epochs 1000 --lr 0.05 --num_users 100 --shard_per_user 2 --frac 0.1 --local_ep 1 --local_bs 10 --results_save run1
 
 #### CIFAR10 
 > python main_fed.py --dataset cifar10 --model cnn --num_classes 10 --epochs 2000 --lr 0.1 --num_users 100 --shard_per_user 2 --frac 0.1 --local_ep 1 --local_bs 50 --results_save run1
 
-## LG-FedAvg
-
-Results can be reproduced by first running the above commands for FedAvg and then running the following:
-
-#### MNIST 
-> python main_lg.py --dataset mnist --model mlp --num_classes 10 --epochs 200 --lr 0.05 --num_users 100 --shard_per_user 2 --frac 0.1 --local_ep 1 --local_bs 10 --num_layers_keep 3 --results_save run1 --load_fed best_400.pt
-
-#### CIFAR10 
-> python main_lg.py --dataset cifar10 --model cnn --num_classes 10 --epochs 200 --lr 0.1 --num_users 100 --shard_per_user 2 --frac 0.1 --local_ep 1 --local_bs 50 --num_layers_keep 2 --results_save run1 --load_fed best_1200.pt
-
-## MTL
-
-Results can be reproduced running the following:
-
-#### MNIST 
-> python main_mtl.py --dataset mnist --model mlp --num_classes 10 --epochs 1000 --lr 0.05 --num_users 100 --shard_per_user 2 --frac 0.1 --local_ep 1 --local_bs 10 --num_layers_keep 5 --results_save run1
-
-#### CIFAR10 
-> python main_mtl.py --dataset cifar10 --model cnn --num_classes 10 --epochs 2000 --lr 0.1 --num_users 100 --shard_per_user 2 --frac 0.1 --local_ep 1 --local_bs 50 --num_layers_keep 5 --results_save run1
-
-
-If you use this code, please cite our paper:
-
-```bash
-@article{liang2019_federated,
-  title={Think Locally, Act Globally: Federated Learning with Local and Global Representations},
-  author={Paul Pu Liang and Terrance Liu and Ziyin Liu and Ruslan Salakhutdinov and Louis-Philippe Morency},
-  journal={ArXiv},
-  year={2019},
-  volume={abs/2001.01523}
-}
-```
-
+## Figure Plotting
+The figures are plotted using pyplot on jupyter notebook, please refer to folder [result_processing](../result_processing/).
 # Acknowledgements
-
-This codebase was adapted from https://github.com/shaoxiongji/federated-learning.
+This codebase was adapted from [LG-FedAvg](https://github.com/pliang279/LG-FedAvg).

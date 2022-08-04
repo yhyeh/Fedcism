@@ -35,16 +35,17 @@ if __name__ == '__main__':
     args.device = torch.device('cuda:{}'.format(args.gpu) if torch.cuda.is_available() and args.gpu != -1 else 'cpu')
 
     if args.myalgo == 0:
-        algo_dir = 'utility'
+        algo_dir = 'oort_e{}'.format(args.epsilon)
     elif args.myalgo == 1:
-        algo_dir = 'algo{}_r{}'.format(args.myalgo, args.gamma)
+        algo_dir = 'algo{}_r{}_e{}'.format(args.myalgo, args.gamma, args.epsilon)
     elif args.myalgo == 2:
-        algo_dir = 'algo{}_{}_deg{}'.format(args.myalgo, 'loss-ratio', args.deg)
-    elif args.myalgo == 5:
-        algo_dir = 'algo{}_deg{}'.format(args.myalgo, args.deg)
+        algo_dir = 'algo{}_{}_deg{}_e{}'.format(args.myalgo, 'loss-ratio', args.deg, args.epsilon)
+    elif args.myalgo == 5 or args.myalgo == 3:
+        algo_dir = 'algo{}_deg{}_e{}_wof100'.format(args.myalgo, args.deg, args.epsilon)
     else:
-        algo_dir = 'algo{}'.format(args.myalgo)
+        algo_dir = 'algo{}_e{}'.format(args.myalgo, args.epsilon)
 
+    algo_dir = 'inv_'+ algo_dir
     base_dir = './save/{}/{}_iid{}_num{}_C{}_le{}/shard{}/{}/'.format(
         args.dataset, args.model, args.iid, args.num_users, args.frac, args.local_ep, args.shard_per_user, args.results_save)
     if not os.path.exists(os.path.join(base_dir, algo_dir)):
@@ -68,6 +69,7 @@ if __name__ == '__main__':
             (dict_users_train, dict_users_test, distr_users) = pickle.load(handle)
     else:
         print('Re dispatch data to local!')
+        os.makedirs(os.path.join(shard_path), exist_ok=True)
         with open(dict_save_path, 'wb') as handle:
             pickle.dump((dict_users_train, dict_users_test, distr_users), handle)
             os.chmod(dict_save_path, 0o444) # read-only
@@ -111,7 +113,9 @@ if __name__ == '__main__':
     lr = args.lr
     results = []
 
-    epsilon = 0.5 # exploitation rate
+    m = max(int(args.frac * args.num_users), 1) # num of selected clients
+    n_exploi = round(m*args.epsilon)
+    n_explor = m - round(m*args.epsilon)
     alpha = 0.1 # penalty exp factor
     confd = 0.95 
     slct_cnt = np.zeros(args.num_users)
@@ -120,12 +124,14 @@ if __name__ == '__main__':
     T = 5
     cossim_glob_uni = np.zeros(args.epochs)
     cossim_glob_uni_path = os.path.join(base_dir, algo_dir, 'cossim_glob_uni.csv')
+    all_distr_glob_fraction = np.zeros((args.epochs, args.num_classes))
+    distr_glob_frac_path = os.path.join(base_dir, algo_dir, 'distr_glob_frac.csv')
     #bacc_wndw_size = args.wndw_size
     #bacc_wndw = np.ones(bacc_wndw_size)
     #best_acc_prev = None
     #BACC_STABLE = False
     #stable_epoch = None
-    wndw_offset = 50
+    wndw_offset = 100
     mov_sum = np.zeros(args.epochs-args.wndw_size)
     # mov_sum[i] = sum(loss_avg[i:i+args.wndw_size])
     mov_ratio = np.zeros(args.epochs-args.wndw_size-wndw_offset) 
@@ -158,84 +164,100 @@ if __name__ == '__main__':
         #############
         # selection #
         #############
-        m = max(int(args.frac * args.num_users), 1) # num of selected clients
+        user_exploi = []
 
         if iter == 0: # first round
-            participants = np.random.choice(range(args.num_users), m, replace=False)
-            distr_glob = np.zeros(args.num_classes) # percentage
+            participants = user_explor = np.random.choice(range(args.num_users), m, replace=False)
+            distr_glob = np.zeros(args.num_classes) # normalized
         
         else:
-            '''
-            keep top good_cli = m*epsilon utility client
-            drop & random select (1-good_cli)
-            '''
-            n_exploi = round(m*epsilon)
-            n_explor = m - round(m*epsilon)
-            sorted_u = {}
-            # ascending [explor...exploi]
-            for i, (k, v) in enumerate(sorted(utility_hist.items(), key=lambda item: item[1])):
-                sorted_u[k] = v
-                if i == len(utility_hist)-n_exploi:
-                    cutoff_utility = v * confd
+            ################
+            # exploitation #
+            ################
+            for sidx in range(n_exploi):
+                sorted_u = {}
+                # ascending [explor...exploi]
+                for i, (k, v) in enumerate(sorted(utility_hist.items(), key=lambda item: item[1])):
+                    sorted_u[k] = v
+                    if i == len(utility_hist)-n_exploi:
+                        cutoff_utility = v * confd
 
-            # descending
-            #sorted_u = {k: v for k, v in sorted(utility_hist.items(), key=lambda item: item[1], reverse=True)}
+                # descending
+                #sorted_u = {k: v for k, v in sorted(utility_hist.items(), key=lambda item: item[1], reverse=True)}
 
-            # err: misunderstood of confd
-            #lob, upb = st.t.interval(confd, len(sorted_u.values())-1, loc=np.mean(sorted_u.values()), scale=st.sem(sorted_u.values()))            
-            
-            ### 
-            n_clip = ceil(len(sorted_u)*(1-confd))
-            n_pool = len(sorted_u) # init
-            pool_util = {} # candidate of this round
-            for k, v in sorted_u.items():
-                if v < cutoff_utility:
-                    n_pool -= 1
-                    continue
-                else:
-                    if len(pool_util) <= n_pool - n_clip: # util // prob
-                        pool_util[k] = v
-                        if len(pool_util) == n_pool - n_clip: # util upper bound
-                            util_upb = v
-                    else: # clipped part
-                        pool_util[k] = util_upb
-            
-            #print('=== utility ===', len(sorted_u),'\n', sorted_u)
-            #print('=== cutoff_utility ===\n', cutoff_utility)
-            #print('=== pool_util ===', len(pool_util),'\n', pool_util)
-    
-            ### sample n_exploi clients by util from pool
-            pdf = np.array(list(pool_util.values()))/sum(pool_util.values())
-            user_exploi = np.random.choice(list(pool_util.keys()), n_exploi, p=pdf, replace=False)
+                # err: misunderstood of confd
+                #lob, upb = st.t.interval(confd, len(sorted_u.values())-1, loc=np.mean(sorted_u.values()), scale=st.sem(sorted_u.values()))            
+                
+                ### 
+                n_clip = ceil(len(sorted_u)*(1-confd))
+                n_pool = len(sorted_u) # init
+                pool_util = {} # candidate of this round
+                for k, v in sorted_u.items():
+                    if v < cutoff_utility or k in user_exploi:
+                        n_pool -= 1
+                        continue
+                    else:
+                        if len(pool_util) <= n_pool - n_clip: # util // prob
+                            pool_util[k] = v
+                            if len(pool_util) == n_pool - n_clip: # util upper bound
+                                util_upb = v
+                        else: # clipped part
+                            pool_util[k] = util_upb
+                
+                #print('=== utility ===', len(sorted_u),'\n', sorted_u)
+                #print('=== cutoff_utility ===\n', cutoff_utility)
+                #print('=== pool_util ===', len(pool_util),'\n', pool_util)
+        
+                ### sample n_exploi clients by util from pool
+                pdf = np.array(list(pool_util.values()))/sum(pool_util.values())
+                elect = np.random.choice(list(pool_util.keys()), 1, p=pdf, replace=False)[0]
+                user_exploi.append(elect)
+
+                ################################
+                # update utility w/ new cossim #
+                ################################
+                distr_glob += distr_users[elect]
+                distr_glob_fraction = distr_glob / sum(distr_glob)
+                for idx in utility_og:
+                    cossim_factor = 1 + gamma * (cosine_similarity(distr_users[idx], distr_glob_fraction))
+                    utility_hist[idx] = utility_og[idx] * cossim_factor
+
+
             #print('exploi users', user_exploi)
             assert len(user_exploi) == n_exploi
 
-            ### sample at most n_explor clients by speed from unexplored
+            ###############
+            # exploration #### sample at most n_explor clients by speed from unexplored
+            ###############
             rest_pool = list(set(range(args.num_users)) - set(pool_util.keys()))
             #print('=== rest_pool ===', len(rest_pool),'\n', rest_pool)
             if len(rest_pool) > n_explor: # require sampling
-                rest_sel = np.random.choice(rest_pool, n_explor, replace=False)# random sample
+                user_explor = np.random.choice(rest_pool, n_explor, replace=False)# random sample
                 #pdf = t_local[rest_pool]/sum(t_local[rest_pool])
-                #rest_sel = np.random.choice(rest_pool, n_explor, p=pdf, replace=False) # sample by speed
-                #rest_sel = sorted(t_local[rest_pool], reverse=True)[:n_explor+1] # top-n_explor by speed
-                participants = np.concatenate((user_exploi, rest_sel))
+                #user_explor = np.random.choice(rest_pool, n_explor, p=pdf, replace=False) # sample by speed
+                #user_explor = sorted(t_local[rest_pool], reverse=True)[:n_explor+1] # top-n_explor by speed
+                participants = np.concatenate((user_exploi, user_explor))
             
             elif len(rest_pool) > 0: # all included, final num of participants will be less than m
+                user_explor = rest_pool
                 participants = np.concatenate((user_exploi, rest_pool))
             else:
+                user_explor = np.empty(0)
                 participants = user_exploi
 
             print('slct users', participants)
             assert len(participants) <= m
 
+        user_explor = user_explor.astype(int).tolist()
         participants = participants.astype(int).tolist()
         print("\n Round {}, deg: {}, {}".format(iter, args.deg, participants))
 
         # In ADVANCE calculate global data distribution 
-        for idx in participants:
+        for idx in list(set(participants)-set(user_exploi)):
             distr_glob += distr_users[idx]
         distr_glob_fraction = distr_glob / sum(distr_glob) # indicate the portion of label
         print('global distribution after round {}(%): {}'.format(iter, [format(100*x, '3.2f') for x in distr_glob_fraction]))
+        all_distr_glob_fraction[iter] = distr_glob_fraction
         ''' # terminal bar graph
         fig = tpl.figure()
         fig.barh([round(100*x) for x in distr_glob_fraction], range(10), force_ascii=True)
@@ -254,14 +276,14 @@ if __name__ == '__main__':
                 gamma = args.gamma
                 #print('cossim utility, cossim_factor: ', cossim_factor)
 
-            elif args.myalgo == 2 or args.myalgo == 5: # adaptive gamma
+            elif args.myalgo in [2, 3, 5]: # adaptive gamma
                 if iter >= args.wndw_size: # start calculate mov_sum
                         mov_sum[iter-args.wndw_size] = sum(loss_train[iter-args.wndw_size:iter])
                 
                 if iter >= args.wndw_size+wndw_offset: # start calculate mov_ratio
                     midx = iter-args.wndw_size-wndw_offset
                     mov_ratio[midx] = mov_sum[midx+wndw_offset]/mov_sum[midx]
-                    gamma = mov_ratio[midx]**args.deg
+                    gamma = (mov_ratio[midx]+0.05)**args.deg
                     print('adaptive gamma activate: ', gamma)
                 '''
                 if iter == 0:
@@ -270,10 +292,10 @@ if __name__ == '__main__':
                     # new gamma depends on (1/loss_avg)^n
                     print('client {} distribution(%): {}'.format(idx, [format(100*x/B_i, '3.2f') for x in distr_users[idx]]))
 
-                    cossim_factor = 1+(args.gamma/loss_avg)**2*(1-cosine_similarity(distr_users[idx], distr_glob_fraction))
+                    cossim_factor = 1+(args.gamma/loss_avg)**2*(cosine_similarity(distr_users[idx], distr_glob_fraction))
                     print('cossim_factor = {:.10f} = 1+{:.3f}*{:.5f}'.format(cossim_factor,
                                                                 args.gamma/loss_avg,
-                                                                1-cosine_similarity(distr_users[idx], distr_glob_fraction)))
+                                                                cosine_similarity(distr_users[idx], distr_glob_fraction)))
                 '''
         '''
         elif args.myalgo == 2 and not BACC_STABLE:
@@ -323,15 +345,15 @@ if __name__ == '__main__':
 
         
         
-        if args.myalgo == 5: # consider cossim_factor for explored users
+        if args.myalgo in [3, 5]: # consider cossim_factor for explored users
             for idx in utility_og:
-                cossim_factor = 1 + gamma * (1-cosine_similarity(distr_users[idx], distr_glob_fraction))
+                cossim_factor = 1 + gamma * (cosine_similarity(distr_users[idx], distr_glob_fraction))
                 utility_hist[idx] = utility_og[idx] * cossim_factor
                 #print('cossim considered', idx , '->', utility_hist[idx])
 
         else:
             for idx in participants:
-                cossim_factor = 1 + gamma * (1-cosine_similarity(distr_users[idx], distr_glob_fraction))
+                cossim_factor = 1 + gamma * (cosine_similarity(distr_users[idx], distr_glob_fraction))
                 utility_hist[idx] = utility_og[idx] * cossim_factor
                 #print('cossim considered', idx , '->', utility_hist[idx])
             
@@ -389,9 +411,12 @@ if __name__ == '__main__':
             #print(bacc_wndw)
             #print('Best acc stable point: epoch ', stable_epoch)
 
-            results.append(np.array([iter, loss_avg, loss_test, acc_test, best_acc, time_local_max, time_simu, time_glob]))
+            results.append(np.array([iter, loss_avg, loss_test, acc_test, best_acc, 
+                                     time_local_max, time_simu, time_glob, user_exploi, user_explor]))
             final_results = np.array(results)
-            final_results = pd.DataFrame(final_results, columns=['epoch', 'loss_avg', 'loss_test', 'acc_test', 'best_acc', 'time_local_max', 'time_simu', 'time_glob'])
+            final_results = pd.DataFrame(final_results, columns=['epoch', 'loss_avg', 'loss_test', 
+                                        'acc_test', 'best_acc', 'time_local_max', 
+                                        'time_simu', 'time_glob', 'user_exploi', 'user_explor'])
             final_results.to_csv(results_save_path, index=False)
             np.savetxt(slctcnt_save_path, slct_cnt, delimiter=",")
         ''' 
@@ -406,6 +431,7 @@ if __name__ == '__main__':
                     fp.write("{}\n".format(json.dumps(sorted_u)))
     np.savetxt(time_save_path, t_all, delimiter=",")
     np.savetxt(cossim_glob_uni_path, cossim_glob_uni, delimiter=",")
+    np.savetxt(distr_glob_frac_path, all_distr_glob_fraction, delimiter=",")
 
     t_prog = time.time() - t_prog_bgin
     print('Best model, iter: {}, acc: {}'.format(best_epoch, best_acc))

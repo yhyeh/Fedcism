@@ -32,7 +32,7 @@ git clone https://github.com/
 
 ## Data
 
-We run FedAvg, Oort and Fedcism experiments on CIFAR-10 ([link](https://www.cs.toronto.edu/~kriz/cifar.html)). See our paper for a description how we process and partition the data for federated learning experiments.
+We run FedAvg, Oort and Fedcism experiments on [CIFAR-10](https://www.cs.toronto.edu/~kriz/cifar.html). See our paper for a description how we process and partition the data for federated learning experiments.
 
 ## Training Reproduction
 Results can be reproduced running the following:
@@ -49,6 +49,6 @@ Please refer to example script [scripts/algo3_gbalan.sh](scripts/algo3_gbalan.sh
 > python main_fed.py --dataset cifar10 --model cnn --num_classes 10 --epochs 2000 --lr 0.1 --num_users 100 --shard_per_user 2 --frac 0.1 --local_ep 1 --local_bs 50 --results_save run1
 
 ## Figure Plotting
-The figures are plotted using pyplot on jupyter notebook, please refer to folder [result_processing](../result_processing/).
+The figures are plotted using pyplot on jupyter notebook, please refer to folder [result_processing](result_processing/).
 # Acknowledgements
 This codebase was adapted from [LG-FedAvg](https://github.com/pliang279/LG-FedAvg).

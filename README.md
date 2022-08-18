@@ -27,7 +27,7 @@ Pillow 4.1.1</br>
 
 The next step is to clone the repository:
 ```bash
-git clone https://github.com/
+git clone https://github.com/yhyeh/Fedcism.git
 ```
 
 ## Data

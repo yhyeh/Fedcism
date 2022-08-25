@@ -45,13 +45,14 @@ if __name__ == '__main__':
     else:
         algo_dir = 'algo{}_e{}'.format(args.myalgo, args.epsilon)
 
+    algo_dir += '_IF2'
     base_dir = './save/{}/{}_iid{}_num{}_C{}_le{}/shard{}/{}/'.format(
         args.dataset, args.model, args.iid, args.num_users, args.frac, args.local_ep, args.shard_per_user, args.results_save)
     if not os.path.exists(os.path.join(base_dir, algo_dir)):
         os.makedirs(os.path.join(base_dir, algo_dir), exist_ok=True)
 
-    torch.manual_seed(int(time.time()))
-    np.random.seed(int(time.time()))
+    #torch.manual_seed(int(time.time()))
+    #np.random.seed(int(time.time()))
     dataset_train, dataset_test, dict_users_train, dict_users_test, distr_users, _ = get_data(args)
     # dict_users_test is unused actually
     
@@ -80,8 +81,8 @@ if __name__ == '__main__':
     #print('type: ', type(dataset_test))
     #print('len: ', len(dataset_test))
 
-    torch.manual_seed(1001)
-    np.random.seed(1001)
+    #torch.manual_seed(1001)
+    #np.random.seed(1001)
     '''
     local_data_size = []
     for idx in range(args.num_users):
@@ -333,17 +334,18 @@ if __name__ == '__main__':
                     w_glob[k] += w_local[k]
 
             #####################
-            # update utility_og #
+            # update utility_og # # set as const 
             #####################
-            B_i = len(dict_users_train[idx])
+            #B_i = len(dict_users_train[idx])
             #if int(idx) in utility_og.keys():
             #    utility_hist[int(idx)] = utility_og[int(idx)]
             #else:
-            utility_og[idx] = np.sqrt(B_i*loss**2)
+            #utility_og[idx] = np.sqrt(B_i*loss**2)
+            utility_og[idx] = 1
 
             # consider system hetero
-            if T < t_local[idx]:
-                utility_og[idx] *= (T/t_local[idx]) ** alpha
+            #if T < t_local[idx]:
+            #    utility_og[idx] *= (T/t_local[idx]) ** alpha
             
             #print('utility_og updated:', idx , '->', utility_og[idx])
             

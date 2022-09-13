@@ -15,7 +15,7 @@ from utils.options import args_parser
 from utils.train_utils import get_data, get_model
 from utils.distribution import cosine_similarity, distr_profile
 from models.Update import LocalUpdate
-from models.test import test_img
+from models.test import DatasetByClass, test_img
 import os
 
 import pdb
@@ -50,8 +50,9 @@ if __name__ == '__main__':
     if not os.path.exists(os.path.join(base_dir, algo_dir)):
         os.makedirs(os.path.join(base_dir, algo_dir), exist_ok=True)
 
-    torch.manual_seed(int(time.time()))
-    np.random.seed(int(time.time()))
+    
+    #torch.manual_seed(int(time.time()))
+    #np.random.seed(int(time.time()))
     dataset_train, dataset_test, dict_users_train, dict_users_test, distr_users, _ = get_data(args)
     # dict_users_test is unused actually
     
@@ -80,8 +81,8 @@ if __name__ == '__main__':
     #print('type: ', type(dataset_test))
     #print('len: ', len(dataset_test))
 
-    torch.manual_seed(1001)
-    np.random.seed(1001)
+    #torch.manual_seed(1001)
+    #np.random.seed(1001)
     '''
     local_data_size = []
     for idx in range(args.num_users):
@@ -108,6 +109,9 @@ if __name__ == '__main__':
     results_save_path = os.path.join(base_dir, algo_dir, 'results.csv')
     slctcnt_save_path = os.path.join(base_dir, algo_dir, 'selection_cnt.csv')
     utility_save_path = os.path.join(base_dir, algo_dir, 'utility.csv')
+    acccls_save_path = os.path.join(base_dir, algo_dir, 'acc_test_by_cls.csv')
+    losscls_save_path = os.path.join(base_dir, algo_dir, 'loss_test_by_cls.csv')
+
     if os.path.exists(utility_save_path): # delete
         os.remove(utility_save_path)
 
@@ -132,6 +136,8 @@ if __name__ == '__main__':
     T = 5
     cossim_glob_uni = np.zeros(args.epochs)
     cossim_glob_uni_path = os.path.join(base_dir, algo_dir, 'cossim_glob_uni.csv')
+    all_acc_test_by_cls = np.zeros((args.epochs, args.num_classes))
+    all_loss_test_by_cls = np.zeros((args.epochs, args.num_classes))
     all_distr_glob_fraction = np.zeros((args.epochs, args.num_classes))
     distr_glob_frac_path = os.path.join(base_dir, algo_dir, 'distr_glob_frac.csv')
     #bacc_wndw_size = args.wndw_size
@@ -396,6 +402,15 @@ if __name__ == '__main__':
             acc_test, loss_test = test_img(net_glob, dataset_test, args)
             print('Round {:3d}, Average loss {:.3f}, Test loss {:.3f}, Test accuracy: {:.2f}, Max local runtime: {:.2f}, Simu runtime: {:.2f}, global runtime: {:.2f}'.format(
                 iter, loss_avg, loss_test, acc_test, time_local_max, time_simu, time_glob))
+            
+            # test by class
+            #acc_test_by_cls = np.zeros(args.num_classes)
+            #loss_test_by_cls = np.zeros(args.num_classes)
+            for cls in range(args.num_classes):
+                all_acc_test_by_cls[iter][cls], all_loss_test_by_cls[iter][cls] = test_img(net_glob, DatasetByClass(dataset_test, cls), args)
+            
+            print('acc_test_by_cls:', all_acc_test_by_cls[iter])
+
             print(base_dir, algo_dir)
             
             best_acc_prev = best_acc
@@ -441,6 +456,8 @@ if __name__ == '__main__':
     np.savetxt(time_save_path, t_all, delimiter=",")
     np.savetxt(cossim_glob_uni_path, cossim_glob_uni, delimiter=",")
     np.savetxt(distr_glob_frac_path, all_distr_glob_fraction, delimiter=",")
+    np.savetxt(acccls_save_path, all_acc_test_by_cls, delimiter=",")
+    np.savetxt(losscls_save_path, all_loss_test_by_cls, delimiter=",")
 
     t_prog = time.time() - t_prog_bgin
     print('Best model, iter: {}, acc: {}'.format(best_epoch, best_acc))

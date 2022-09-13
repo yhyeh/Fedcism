@@ -213,7 +213,8 @@ def get_exp_result(dataset, distr, VI, RUN, data_distr_file, result_folder,
         ax.spines['top'].set_visible(False)
 
         # legend reorder
-        order = [0,1,3,2]
+        #order = [0,1,3,2]
+        order = range(len(algos))
         handles, labels = plt.gca().get_legend_handles_labels()
         print(labels)
         ax.legend([handles[idx] for idx in order],[labels[idx] for idx in order], 
@@ -310,7 +311,9 @@ def get_exp_result(dataset, distr, VI, RUN, data_distr_file, result_folder,
                 ax.spines['top'].set_visible(False)
                 
                 # legend reorder
-                order = [0,1,3,2]
+                #order = [0,1,3,2]
+                order = range(len(algos))
+
                 handles, labels = plt.gca().get_legend_handles_labels()
                 print(labels)
                 ax.legend([handles[idx] for idx in order],[labels[idx] for idx in order], 

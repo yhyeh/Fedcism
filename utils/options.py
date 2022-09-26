@@ -7,6 +7,9 @@ import argparse
 def args_parser():
     parser = argparse.ArgumentParser()
 
+    # comp+comm time arg
+    parser.add_argument('--latency', type=int, default=5, help="max mean of Poisson latency simulation")
+
     # selection algorithm arg
     parser.add_argument('--gamma', type=float, default=0.8, help="the importance of similarity in utility function")
     parser.add_argument('--myalgo', type=int, default=1, help="different design No. of utility function")

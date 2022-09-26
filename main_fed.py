@@ -34,8 +34,8 @@ if __name__ == '__main__':
     if not os.path.exists(os.path.join(base_dir, algo_dir)):
         os.makedirs(os.path.join(base_dir, algo_dir), exist_ok=True)
     
-    torch.manual_seed(int(time.time()))
-    np.random.seed(int(time.time()))
+    #torch.manual_seed(int(time.time()))
+    #np.random.seed(int(time.time()))
     dataset_train, dataset_test, dict_users_train, dict_users_test, distr_users, _ = get_data(args)
     '''
     print('type: ', type(dataset_test))
@@ -69,8 +69,8 @@ if __name__ == '__main__':
             pickle.dump((dict_users_train, dict_users_test, distr_users), handle)
             os.chmod(dict_save_path, 0o444) # read-only
     
-    torch.manual_seed(1001)
-    np.random.seed(1001)
+    #torch.manual_seed(1001)
+    #np.random.seed(1001)
     
     # build cloud model
     net_glob = get_model(args)
@@ -101,7 +101,7 @@ if __name__ == '__main__':
 
     ### simulate dynamic training + tx time
     time_simu = 0
-    time_save_path= './save/user_config/var_time/{}_{}.csv'.format(args.dataset, args.num_users)
+    time_save_path= './save/user_config/var_time/{}_nu{}_mean{}.csv'.format(args.dataset, args.num_users, args.latency)
     if os.path.exists(time_save_path):
         # load shared config
         print('Load existed time config...')
@@ -110,9 +110,12 @@ if __name__ == '__main__':
         # generate new config and save
         print('Generate new time config...')
         t_all = np.zeros((args.num_users, args.epochs))
-        t_mean = np.random.randint(1, 5, args.num_users) # rand choose from 1~10
+        t_mean = np.random.randint(1, args.latency, args.num_users) # rand choose from 1~args.latency
         for u in range(args.num_users):
             t_all[u] = np.random.poisson(t_mean[u], size=args.epochs) + 1
+        np.savetxt(time_save_path, t_all, delimiter=",")
+        os.chmod(time_save_path, 0o444) # read-only
+
 
     for iter in range(args.epochs):
         t_geps_bgin = time.time()
@@ -215,7 +218,6 @@ if __name__ == '__main__':
             torch.save(net_best.state_dict(), best_save_path)
             torch.save(net_glob.state_dict(), model_save_path)
         '''
-    np.savetxt(time_save_path, t_all, delimiter=",")
     np.savetxt(cossim_glob_uni_path, cossim_glob_uni, delimiter=",")
     np.savetxt(distr_glob_frac_path, all_distr_glob_fraction, delimiter=",")
 

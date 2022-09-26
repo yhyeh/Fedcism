@@ -50,8 +50,8 @@ if __name__ == '__main__':
     if not os.path.exists(os.path.join(base_dir, algo_dir)):
         os.makedirs(os.path.join(base_dir, algo_dir), exist_ok=True)
 
-    torch.manual_seed(int(time.time()))
-    np.random.seed(int(time.time()))
+    #torch.manual_seed(int(time.time()))
+    #np.random.seed(int(time.time()))
     dataset_train, dataset_test, dict_users_train, dict_users_test, distr_users, _ = get_data(args)
     # dict_users_test is unused actually
     
@@ -80,8 +80,8 @@ if __name__ == '__main__':
     #print('type: ', type(dataset_test))
     #print('len: ', len(dataset_test))
 
-    torch.manual_seed(1001)
-    np.random.seed(1001)
+    #torch.manual_seed(1001)
+    #np.random.seed(1001)
     '''
     local_data_size = []
     for idx in range(args.num_users):
@@ -129,7 +129,7 @@ if __name__ == '__main__':
     slct_cnt = np.zeros(args.num_users)
     utility_hist = {} # clientID : utility
     utility_og = {} # clientID : utility
-    T = 5
+    T = args.latency
     cossim_glob_uni = np.zeros(args.epochs)
     cossim_glob_uni_path = os.path.join(base_dir, algo_dir, 'cossim_glob_uni.csv')
     all_distr_glob_fraction = np.zeros((args.epochs, args.num_classes))
@@ -147,7 +147,7 @@ if __name__ == '__main__':
 
     ### simulate dynamic training + tx time
     time_simu = 0
-    time_save_path= './save/user_config/var_time/{}_{}.csv'.format(args.dataset, args.num_users)
+    time_save_path= './save/user_config/var_time/{}_nu{}_mean{}.csv'.format(args.dataset, args.num_users, args.latency)
     if os.path.exists(time_save_path):
         # load shared config
         print('Load existed time config...')
@@ -156,10 +156,12 @@ if __name__ == '__main__':
         # generate new config and save
         print('Generate new time config...')
         t_all = np.zeros((args.num_users, args.epochs))
-        t_mean = np.random.randint(1, 5, args.num_users) # rand choose from 1~10
+        t_mean = np.random.randint(1, args.latency, args.num_users) # rand choose from 1~args.latency
         for u in range(args.num_users):
             t_all[u] = np.random.poisson(t_mean[u], size=args.epochs) + 1
-
+        
+        np.savetxt(time_save_path, t_all, delimiter=",")
+        os.chmod(time_save_path, 0o444) # read-only
     
     for iter in range(args.epochs):
         t_geps_bgin = time.time()
@@ -438,7 +440,6 @@ if __name__ == '__main__':
     # save history of utility of all explored clients
     with open(utility_save_path, 'w') as fp:
                     fp.write("{}\n".format(json.dumps(sorted_u)))
-    np.savetxt(time_save_path, t_all, delimiter=",")
     np.savetxt(cossim_glob_uni_path, cossim_glob_uni, delimiter=",")
     np.savetxt(distr_glob_frac_path, all_distr_glob_fraction, delimiter=",")
 

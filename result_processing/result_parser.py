@@ -1,9 +1,10 @@
 import os, sys
+sys.path.append('../')
 import numpy as np
 import pandas as pd
 import pickle
 import matplotlib.pyplot as plt
-sys.path.append('../')
+
 from utils.distribution import distr_profile, cosine_similarity
 
 
@@ -120,7 +121,8 @@ def get_exp_result(dataset, distr, VI, RUN, data_distr_file, result_folder,
         sim_glob = {}
         #slctcnt = {}
         print('algorithms')
-        algos = ['fedavg', 'oort_e0.8']+cossim_algos #+list(map(lambda s:'uni_'+s, cossim_algos))
+        #algos = ['fedavg', 'oort_e0.8']+cossim_algos #+list(map(lambda s:'uni_'+s, cossim_algos))
+        algos = list(legends.keys())
         print(algos)
         #plt.figure(figsize=(20, 6))
         #fig, axs = plt.subplots(1, 2, figsize=(20, 6), constrained_layout=True)
@@ -141,7 +143,7 @@ def get_exp_result(dataset, distr, VI, RUN, data_distr_file, result_folder,
                 distr_glob_frac = np.genfromtxt(distr_glob_frac_path, delimiter=',')
                 distr_zipf = np.array([1/p for p in range(1, distr_glob_frac.shape[1]+1)])
                 distr_uni = np.ones(distr_glob_frac.shape[1])
-                down_sample_idx = np.arange(0, round(distr_glob_frac.shape[0]), 10)
+                down_sample_idx = np.arange(0, global_ep, 10)
 
                 '''
                 plot global data distribution over epochs
@@ -182,32 +184,9 @@ def get_exp_result(dataset, distr, VI, RUN, data_distr_file, result_folder,
                 '''
                 #ax.title.set_text('sim(glob, uni)')
                 ax.plot(down_sample_idx, sim_g_u, linemk[aidx], label=legends[algo])
-                ax.set_ylabel('Similarity( $\mathcal{D}_G$, $\mathcal{U}$ )')
-                ax.set_xlabel('Epoch')
-                #ax.set_ylim([0.4, 1])
                 fsim_algos.append(sim_g_u[-1])
                 
-                #fig.legend(loc='upper center', bbox_to_anchor=(0.5, -0.15),
-                #        fancybox=True, shadow=True, ncol=2)
                 
-                # Hide the right and top spines
-                ax.spines['right'].set_visible(False)
-                ax.spines['top'].set_visible(False)
-
-                ax.legend(fontsize=8, ncol=len(algos), frameon=False)
-
-                if distr == 'cus': # alias
-                    fig_name = 'sim_{}_vi{}_r{}'.format('sparsez', VI, RUN)
-                else:            
-                    fig_name = 'sim_{}_vi{}_r{}'.format(distr, VI, RUN)
-                
-                fig_path = os.path.join('save', dataset, 'fig', 'mid', fig_name)
-                if save:
-                    fig.tight_layout()
-                    fig.savefig('{}.{}'.format(fig_path, 'png'), format='png', transparent=True)
-                    fig.savefig('{}.{}'.format(fig_path, 'eps'), format='eps', transparent=True)
-                if show_fig == False:
-                    plt.close(fig)
                 #cossim_glob_uni_utility = np.genfromtxt(cossim_path_utility, delimiter=',')
                 #df_result[algo]['cossim_glob_uni'] = cossim_glob_uni_utility
                 #utility = np.genfromtxt(utility_path, delimiter='\n')
@@ -223,9 +202,41 @@ def get_exp_result(dataset, distr, VI, RUN, data_distr_file, result_folder,
             else:
                 print('No {} training result.'.format(algo))
 
+        ax.set_ylabel('Similarity( $\mathcal{D}_G$, $\mathcal{U}$ )')
+        ax.set_xlabel('Epoch')
+        #ax.set_ylim([0.4, 1])
 
+        #fig.legend(loc='upper center', bbox_to_anchor=(0.5, -0.15),
+        #        fancybox=True, shadow=True, ncol=2)
+        
+        # Hide the right and top spines
+        ax.spines['right'].set_visible(False)
+        ax.spines['top'].set_visible(False)
+
+        # legend reorder
+        #order = [0,1,3,2]
+        order = range(len(algos))
+        handles, labels = plt.gca().get_legend_handles_labels()
+        print(labels)
+        ax.legend([handles[idx] for idx in order],[labels[idx] for idx in order], 
+                    fontsize=8, ncol=int(len(algos)/2), frameon=False)
+        #ax.legend(fontsize=8, ncol=int(len(algos)/2), frameon=False)
+                
+        if distr == 'cus': # alias
+            fig_name = 'sim_{}_s{}_c{}_vi{}_r{}'.format('sparsez', shard_per_user, frac, VI, RUN)
+        else:            
+            fig_name = 'sim_{}_s{}_c{}_vi{}_r{}'.format(distr,  shard_per_user, frac, VI, RUN)
+        
+        fig_path = os.path.join('..', 'save', dataset, 'fig', 'IF', fig_name)
+        if save:
+            fig.tight_layout()
+            fig.savefig('{}.{}'.format(fig_path, 'png'), format='png', transparent=True)
+            fig.savefig('{}.{}'.format(fig_path, 'eps'), format='eps', transparent=True)
+        if show_fig == False:
+            plt.close(fig)
+        
         #final_acc = top_acc = max(bacc_algos)
-        final_acc = min_acc = min(bacc_algos[1:]) # exclude fedavg
+        final_acc = min_acc = min(bacc_algos[1:3]) # exclude fedavg
         print()
         print('bacc summary: {} -> max: {}'.format(bacc_algos, final_acc))
         target_acc = final_acc * acc_threshold/100
@@ -299,15 +310,22 @@ def get_exp_result(dataset, distr, VI, RUN, data_distr_file, result_folder,
 
                 ax.spines['right'].set_visible(False)
                 ax.spines['top'].set_visible(False)
+                
+                # legend reorder
+                #order = [0,1,3,2]
+                order = range(len(algos))
 
-                ax.legend(fontsize=8, ncol=len(algos), frameon=False)
+                handles, labels = plt.gca().get_legend_handles_labels()
+                print(labels)
+                ax.legend([handles[idx] for idx in order],[labels[idx] for idx in order], 
+                            fontsize=8, ncol=int(len(algos)/2), frameon=False)
 
                 if distr == 'cus': # alias
                     fig_name = '{}-{}_{}_s{}_c{}_vi{}_r{}'.format(alias, xlab, 'sparsez', shard_per_user, frac, VI, RUN)
                 else:            
                     fig_name = '{}-{}_{}_s{}_c{}_vi{}_r{}'.format(alias, xlab, distr, shard_per_user, frac, VI, RUN)
                 
-                fig_path = os.path.join('save', dataset, 'fig', 'mid', fig_name)
+                fig_path = os.path.join('..', 'save', dataset, 'fig', 'IF', fig_name)
                 fig.tight_layout()
 
                 if save:

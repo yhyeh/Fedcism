@@ -8,31 +8,28 @@ Correspondence to:
   - Kate C.J. Lin (katelin@cs.nycu.edu.tw)
   
 ## Paper
-
 [**Distribution-Aware Participant Selection for Federated Learning**](https://)<br>
 [Yu-Hsuan Yeh](https://www.linkedin.com/in/yhyeh/), [Kate C.J. Lin](https://people.cs.nctu.edu.tw/~katelin/)<br>
 
 If you find this repository useful, please cite our paper.
 
 ## Installation
-
-First check that the requirements are satisfied:</br>
-Python 3.6</br>
-torch 1.2.0</br>
-torchvision 0.4.0</br>
-numpy 1.18.1</br>
-sklearn 0.20.0</br>
-matplotlib 3.1.2</br>
-Pillow 4.1.1</br>
-
-The next step is to clone the repository:
+- Clone environment using conda [Doc](https://conda.io/projects/conda/en/latest/user-guide/tasks/manage-environments.html#creating-an-environment-from-an-environment-yml-file)
+  - Makesure you already have conda installed [Doc](https://docs.anaconda.com/anaconda/install/)
+```bash
+conda env create --name fedcism_env -f conda_environment.yml
+```
+- Install required python packages [Doc](https://pip.pypa.io/en/stable/cli/pip_install/#)
+```bash
+pip install -r pip_requirements.txt
+```
+- Clone the repository
 ```bash
 git clone https://github.com/yhyeh/Fedcism.git
 ```
 
 ## Data
-
-We run FedAvg, Oort and Fedcism experiments on [CIFAR-10](https://www.cs.toronto.edu/~kriz/cifar.html). See our paper for a description how we process and partition the data for federated learning experiments.
+We run FedAvg, Oort and Fedcism experiments on [CIFAR-10](https://www.cs.toronto.edu/~kriz/cifar.html). See our paper for how we process and partition the data for federated learning experiments.
 
 ## Training Reproduction
 Results can be reproduced running the following:
@@ -50,5 +47,6 @@ Please refer to example script [scripts/algo3_gbalan.sh](scripts/algo3_gbalan.sh
 
 ## Figure Plotting
 The figures are plotted using pyplot on jupyter notebook, please refer to folder [result_processing](result_processing/).
+
 # Acknowledgements
 This codebase was adapted from [LG-FedAvg](https://github.com/pliang279/LG-FedAvg).

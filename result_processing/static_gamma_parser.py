@@ -1,4 +1,5 @@
-import os
+import os, sys
+sys.path.append('../')
 import numpy as np
 import pandas as pd
 import pickle
@@ -34,7 +35,7 @@ def get_exp_result(dataset, distr, VI, RUN, data_distr_file, result_folder,
             iid = True
 
     #save\mnist\mlp_iidTrue_num100_C0.1_le1\shard10\run1\fed
-    base_dir = './save/{}/{}_iid{}_num{}_C{}_le{}/shard{}/'.format(
+    base_dir = '../save/{}/{}_iid{}_num{}_C{}_le{}/shard{}/'.format(
         dataset, model, iid, num_users, frac, local_ep, shard_per_user)
     #runs = os.listdir(base_dir)
     #print(runs)
@@ -50,7 +51,7 @@ def get_exp_result(dataset, distr, VI, RUN, data_distr_file, result_folder,
     #outcome = os.listdir(os.path.join(base_dir, runs[0]))
     #print(outcome)
 
-    shard_path = './save/{}/data_distr/num{}/shard{}/'.format(
+    shard_path = '../save/{}/data_distr/num{}/shard{}/'.format(
             dataset, num_users, shard_per_user)
     data_dict_path = os.path.join(shard_path, data_dict_fname)
     with open(data_dict_path, 'rb') as handle:
@@ -223,7 +224,7 @@ def get_exp_result(dataset, distr, VI, RUN, data_distr_file, result_folder,
                 # else:            
                 #     fig_name = 'sim_{}_vi{}_r{}'.format(distr, VI, RUN)
                 
-                # fig_path = os.path.join('save', dataset, 'fig', 'gamma', fig_name)
+                # fig_path = os.path.join('..', 'save', dataset, 'fig', 'gamma', fig_name)
                 # if save:
                 #     fig.tight_layout()
                 #     fig.savefig('{}.{}'.format(fig_path, 'png'), format='png', transparent=True)
@@ -335,7 +336,7 @@ def get_exp_result(dataset, distr, VI, RUN, data_distr_file, result_folder,
                     fig_name = '{}-{}_{}_s{}_c{}_vi{}_r{}'.format(alias, xlab, distr, shard_per_user, frac, VI, RUN)
                 
                 fig_name += '_wo-adp'
-                fig_path = os.path.join('save', dataset, 'fig', 'gamma', 'old', fig_name)
+                fig_path = os.path.join('..', 'save', dataset, 'fig', 'gamma', 'old', fig_name)
                 fig.tight_layout()
 
                 if save:
